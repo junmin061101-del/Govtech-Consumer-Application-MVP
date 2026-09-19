@@ -34,7 +34,7 @@ body {
   min-width: 30px;
   padding: 3px 9px;
   border-radius: 999px;
-  background: #059669;
+  background: var(--pin, #059669);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -49,14 +49,11 @@ body {
   bottom: -7px;
   transform: translateX(-50%);
   border: 4px solid transparent;
-  border-top-color: #059669;
+  border-top-color: var(--pin, #059669);
 }
 .pin[data-selected="true"] .pin-count {
-  background: #064e3b;
-  transform: scale(1.15);
-}
-.pin[data-selected="true"] .pin-count::after {
-  border-top-color: #064e3b;
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.25), 0 1px 4px rgb(0 0 0 / 0.35);
 }
 .pin-name {
   order: -1;

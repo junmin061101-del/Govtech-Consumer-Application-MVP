@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { searchPlaces, type PlaceHit } from "@/lib/kakao";
 import { DONGJAK_CENTER, QUICK_PLACES } from "@/lib/places";
 import { walkMinToM } from "@/lib/filter";
-import type { Day, Filters } from "@/lib/types";
+import { KIND_META, KIND_ORDER } from "@/lib/kinds";
+import { AGES, type Day, type FacilityKind, type Filters } from "@/lib/types";
 
-type Section = "age" | "time" | "place";
+type Section = "age" | "kind" | "time" | "place";
 
 interface Props {
   filters: Filters;
@@ -14,6 +15,8 @@ interface Props {
   pickMode: boolean;
   onPickMode: (on: boolean) => void;
   resultCount: number;
+  /** 지도에 데이터가 있는 시설 종류 (없는 종류는 선택지에서 숨긴다) */
+  availableKinds: FacilityKind[];
   /** 조건을 바꿨지만 아직 검색을 누르지 않은 상태 */
   dirty: boolean;
   onSearch: () => void;
@@ -46,6 +49,7 @@ export default function FilterBar({
   pickMode,
   onPickMode,
   resultCount,
+  availableKinds,
   dirty,
   onSearch,
 }: Props) {
@@ -86,6 +90,9 @@ export default function FilterBar({
           <SummaryChip active={open === "age"} filled={filters.age !== null} onClick={() => toggle("age")}>
             {filters.age === null ? "아이 나이" : `만 ${filters.age}세`}
           </SummaryChip>
+          <SummaryChip active={open === "kind"} filled={filters.kinds.length > 0} onClick={() => toggle("kind")}>
+            {filters.kinds.length === 0 ? "시설 종류" : filters.kinds.map((k) => KIND_META[k].label).join("·")}
+          </SummaryChip>
           <SummaryChip active={open === "time"} filled onClick={() => toggle("time")}>
             {dayLabel(filters.day)} {filters.start}–{filters.end}
           </SummaryChip>
@@ -107,18 +114,22 @@ export default function FilterBar({
         <div className="border-t border-stone-100 px-4 pb-4 pt-3">
           {open === "age" && (
             <div>
-              <p className="mb-2 text-xs text-stone-500">만 나이 기준으로 해당 연령 반이 있는 어린이집만 보여줘요.</p>
+              <p className="mb-2 text-xs text-stone-500">만 나이 기준으로 이용할 수 있는 시설만 보여줘요. (만 0~8세)</p>
               <div className="flex flex-wrap gap-2">
                 <button className={chip(filters.age === null)} onClick={() => onChange({ age: null })}>
                   전체
                 </button>
-                {[0, 1, 2, 3, 4, 5].map((a) => (
+                {AGES.map((a) => (
                   <button key={a} className={chip(filters.age === a)} onClick={() => onChange({ age: a })}>
                     만 {a}세
                   </button>
                 ))}
               </div>
             </div>
+          )}
+
+          {open === "kind" && (
+            <KindSection filters={filters} onChange={onChange} availableKinds={availableKinds} />
           )}
 
           {open === "time" && <TimeSection filters={filters} onChange={onChange} />}
@@ -167,6 +178,36 @@ function SummaryChip({
   );
 }
 
+function KindSection({
+  filters,
+  onChange,
+  availableKinds,
+}: Pick<Props, "filters" | "onChange" | "availableKinds">) {
+  const toggleKind = (k: FacilityKind) =>
+    onChange({ kinds: filters.kinds.includes(k) ? filters.kinds.filter((x) => x !== k) : [...filters.kinds, k] });
+
+  return (
+    <div>
+      <p className="mb-2 text-xs text-stone-500">여러 개를 고를 수 있어요. 고르지 않으면 모든 종류를 보여줘요.</p>
+      <div className="flex flex-wrap gap-2">
+        <button className={chip(filters.kinds.length === 0)} onClick={() => onChange({ kinds: [] })}>
+          전체
+        </button>
+        {KIND_ORDER.filter((k) => availableKinds.includes(k)).map((k) => (
+          <button key={k} className={chip(filters.kinds.includes(k))} onClick={() => toggleKind(k)}>
+            <span
+              aria-hidden
+              className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full align-middle"
+              style={{ background: KIND_META[k].color }}
+            />
+            {KIND_META[k].label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TimeSection({ filters, onChange }: Pick<Props, "filters" | "onChange">) {
   const setStart = (start: string) => {
     const idx = TIMES.indexOf(start);
@@ -201,7 +242,7 @@ function TimeSection({ filters, onChange }: Pick<Props, "filters" | "onChange">)
         </select>
       </div>
       <p className="text-xs text-stone-500">
-        평일 07:30~19:30 밖(야간·휴일)은 야간연장형·휴일보육 어린이집만 표시돼요. 정확한 운영 시간은 시설에 확인해 주세요.
+        평일 19:30 이후·주말은 야간연장형·휴일보육 어린이집만 표시돼요. 정확한 운영 시간은 시설에 확인해 주세요.
       </p>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { KAKAO_KEY, loadKakao, type Kakao } from "@/lib/kakao";
+import { KIND_META } from "@/lib/kinds";
 import { DONGJAK_CENTER } from "@/lib/places";
 import type { Match } from "@/lib/types";
 
@@ -59,8 +60,13 @@ export default function KakaoMap({ matches, selectedId, onSelect, center, radius
       el.type = "button";
       el.className = "pin";
       el.dataset.selected = String(f.id === selectedId);
-      el.setAttribute("aria-label", `${f.name}, 빈자리 ${f.vacancy}명`);
-      el.innerHTML = `<span class="pin-count">${f.vacancy}</span>${
+      el.style.setProperty("--pin", KIND_META[f.kind].color);
+      el.setAttribute(
+        "aria-label",
+        `${KIND_META[f.kind].label} ${f.name}, ${f.vacancy === null ? "빈자리 정보 없음" : `빈자리 ${f.vacancy}명`}`,
+      );
+      // 빈자리를 아는 시설은 숫자, 모르는 시설은 종류의 한 글자를 보여준다
+      el.innerHTML = `<span class="pin-count">${f.vacancy ?? KIND_META[f.kind].short}</span>${
         f.id === selectedId ? `<span class="pin-name">${f.name.replace(/</g, "&lt;")}</span>` : ""
       }`;
       el.addEventListener("click", (ev) => {

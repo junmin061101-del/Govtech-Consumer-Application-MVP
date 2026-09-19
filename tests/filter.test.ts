@@ -5,6 +5,7 @@ import type { Facility, Filters } from "@/lib/types";
 
 const base: Facility = {
   id: "a",
+  kind: "daycare",
   name: "테스트어린이집",
   type: "국공립",
   address: "",
@@ -15,13 +16,14 @@ const base: Facility = {
   capacity: 20,
   enrolled: 15,
   vacancy: 5,
-  ageOpen: [true, true, true, false, false, false],
+  ageOpen: [true, true, true, false, false, false, false, false, false],
   extended: {},
   asOf: "2026-09-18",
 };
 
 const filters: Filters = {
   age: 1,
+  kinds: [],
   day: "weekday",
   start: "09:00",
   end: "17:00",
@@ -76,6 +78,48 @@ describe("matchFacilities", () => {
   });
 });
 
+describe("시설 종류 확장", () => {
+  const kindergarten: Facility = {
+    ...base,
+    id: "k",
+    kind: "kindergarten",
+    capacity: null,
+    enrolled: null,
+    vacancy: null,
+    ageOpen: [false, false, false, true, true, true, false, false, false],
+  };
+  const localCenter: Facility = { ...kindergarten, id: "l", kind: "localcenter", ageOpen: [0, 1, 2, 3, 4, 5, 6, 7, 8].map((a) => a >= 6) };
+
+  it("빈자리 정보가 없는(null) 시설도 조건이 맞으면 지도에 남는다", () => {
+    const res = matchFacilities([kindergarten], { ...filters, age: 4 });
+    expect(res).toHaveLength(1);
+    expect(res[0].hours.confidence).toBe("needs-check");
+  });
+
+  it("만 6~8세는 지역아동센터만, 만 3~5세는 유치원이 대상이다", () => {
+    const all = [base, kindergarten, localCenter];
+    expect(matchFacilities(all, { ...filters, age: 7 }).map((m) => m.facility.id)).toEqual(["l"]);
+    expect(matchFacilities(all, { ...filters, age: 4 }).map((m) => m.facility.id)).toEqual(["k"]);
+  });
+
+  it("시설 종류를 고르면 그 종류만 보인다", () => {
+    const all = [base, kindergarten, localCenter];
+    const res = matchFacilities(all, { ...filters, age: null, kinds: ["localcenter"] });
+    expect(res.map((m) => m.facility.id)).toEqual(["l"]);
+  });
+
+  it("운영시간 정보가 없는 종류는 야간·주말 검색에서 제외한다", () => {
+    const night = { ...filters, age: 4, start: "19:00", end: "21:00" };
+    expect(matchFacilities([kindergarten], night)).toHaveLength(0);
+    expect(matchFacilities([kindergarten], { ...filters, age: 4, day: "sat" as const })).toHaveLength(0);
+  });
+
+  it("빈자리가 0으로 확인된 시설만 제외하고 정보 없음(null)은 남긴다", () => {
+    expect(matchFacilities([{ ...base, vacancy: 0 }], filters)).toHaveLength(0);
+    expect(matchFacilities([{ ...base, vacancy: null }], filters)).toHaveLength(1);
+  });
+});
+
 describe("normalizeRow", () => {
   const row = {
     STCODE: "1",
@@ -94,7 +138,8 @@ describe("normalizeRow", () => {
   it("정원-현원으로 빈자리를 계산하고 혼합반을 연령에 반영한다", () => {
     const f = normalizeRow(row)!;
     expect(f.vacancy).toBe(5);
-    expect(f.ageOpen).toEqual([true, true, true, false, false, false]);
+    expect(f.ageOpen).toEqual([true, true, true, false, false, false, false, false, false]);
+    expect(f.kind).toBe("daycare");
   });
 
   it("휴지 후 재개한 시설은 포함하고, 휴지·폐지·좌표 오류 시설은 걸러낸다", () => {

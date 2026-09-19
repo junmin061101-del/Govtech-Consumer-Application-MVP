@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import FilterBar from "@/components/FilterBar";
 import KakaoMap from "@/components/KakaoMap";
 import { FacilityDetail, ResultList } from "@/components/ResultPanel";
+import { loadExtraFacilities } from "@/lib/extras";
 import { matchFacilities, walkMinToM } from "@/lib/filter";
-import type { FacilitiesPayload, Filters } from "@/lib/types";
+import { KIND_ORDER } from "@/lib/kinds";
+import type { FacilitiesPayload, Facility, Filters } from "@/lib/types";
 
 const DEFAULTS: Filters = {
   age: null,
+  kinds: [],
   day: "weekday",
   start: "09:00",
   end: "18:00",
@@ -18,6 +21,7 @@ const DEFAULTS: Filters = {
 
 export default function Home() {
   const [data, setData] = useState<FacilitiesPayload | null>(null);
+  const [extras, setExtras] = useState<Facility[]>([]);
   const [error, setError] = useState<string | null>(null);
   // draft: 입력 중인 조건 / filters: 검색 버튼으로 적용된 조건 (지도·목록은 이것만 본다)
   const [draft, setDraft] = useState<Filters>(DEFAULTS);
@@ -35,7 +39,16 @@ export default function Home() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  const matches = useMemo(() => (data ? matchFacilities(data.facilities, filters) : []), [data, filters]);
+  // 유치원·지역아동센터 등은 카카오맵 검색으로 따로 불러온다. 실패해도 어린이집 지도는 그대로 동작한다.
+  useEffect(() => {
+    loadExtraFacilities()
+      .then(setExtras)
+      .catch(() => setExtras([]));
+  }, []);
+
+  const all = useMemo(() => (data ? [...data.facilities, ...extras] : []), [data, extras]);
+  const availableKinds = useMemo(() => KIND_ORDER.filter((k) => all.some((f) => f.kind === k)), [all]);
+  const matches = useMemo(() => matchFacilities(all, filters), [all, filters]);
   const selected = matches.find((m) => m.facility.id === selectedId) ?? null;
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(filters), [draft, filters]);
@@ -63,6 +76,7 @@ export default function Home() {
           pickMode={pickMode}
           onPickMode={setPickMode}
           resultCount={matches.length}
+          availableKinds={availableKinds}
           dirty={dirty}
           onSearch={onSearch}
         />

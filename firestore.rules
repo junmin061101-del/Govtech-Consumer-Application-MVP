@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// Firebase 콘솔 > Firestore Database > 규칙 탭에 그대로 붙여넣고 '게시'한다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 리뷰: 누구나 읽고, 로그인한 본인만 시설당 1개를 쓰고 고치고 지운다.
+    match /reviews/{reviewId} {
+      allow read: if true;
+
+      allow create, update: if request.auth != null
+        // 문서 ID = 시설ID_uid 이므로 시설당 1인 1리뷰가 강제된다
+        && reviewId == request.resource.data.facilityId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        // 닉네임은 서버가 발급한 토큰 값과 같아야 한다 (남의 이름으로 쓰기 방지)
+        && request.resource.data.nickname == request.auth.token.nickname
+        && request.resource.data.keys().hasOnly(
+             ['facilityId', 'uid', 'nickname', 'rating', 'text', 'tags', 'updatedAt'])
+        && request.resource.data.facilityId is string
+        && request.resource.data.facilityId.size() > 0
+        && request.resource.data.facilityId.size() <= 64
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.tags is list
+        && request.resource.data.tags.hasOnly(['kind', 'clean', 'food', 'program', 'flex', 'access'])
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+  }
+}

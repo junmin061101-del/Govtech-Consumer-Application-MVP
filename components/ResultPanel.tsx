@@ -2,6 +2,7 @@
 
 import { KIND_META } from "@/lib/kinds";
 import type { Match } from "@/lib/types";
+import Reviews from "./Reviews";
 
 const fmtDist = (m: number | null) =>
   m === null ? null : m < 1000 ? `${Math.round(m / 10) * 10}m` : `${(m / 1000).toFixed(1)}km`;
@@ -168,6 +169,8 @@ export function FacilityDetail({
           </a>
         </div>
       </div>
+
+      <Reviews facilityId={f.id} />
     </div>
   );
 }

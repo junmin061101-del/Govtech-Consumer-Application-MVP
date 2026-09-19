@@ -161,7 +161,7 @@ function TimeSection({ filters, onChange }: Pick<Props, "filters" | "onChange">)
         </select>
       </div>
       <p className="text-xs text-stone-500">
-        평일 07:30~19:30 밖(야간·주말)은 운영 정보가 확인된 시설만 표시돼요.
+        평일 07:30~19:30 밖(야간·휴일)은 야간연장형·휴일보육 어린이집만 표시돼요. 정확한 운영 시간은 시설에 확인해 주세요.
       </p>
     </div>
   );

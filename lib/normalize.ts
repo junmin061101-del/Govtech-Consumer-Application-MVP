@@ -14,6 +14,8 @@ export interface RawRow {
   LA?: string | number;
   LO?: string | number;
   DATASTDRDT?: string;
+  /** 어린이집 특성. 쉼표 구분 (예: "장애아통합,야간연장형,휴일보육") */
+  CRSPEC?: string;
   CLASS_CNT_00?: number;
   CLASS_CNT_01?: number;
   CLASS_CNT_02?: number;
@@ -53,6 +55,21 @@ function ageOpen(row: RawRow): boolean[] {
   return cls.map((c, age) => c > 0 || (age <= 2 ? m2 : m5));
 }
 
+/**
+ * CRSPEC 에서 기본 보육시간 밖 운영 여부를 읽는다.
+ * 야간연장형은 종료 시각이 데이터에 없으므로 closeTime 을 비워 두고(=확인 필요),
+ * 24시간형만 심야까지 확정한다. 휴일보육은 운영 시간대를 알 수 없다.
+ */
+function extendedFromSpec(spec: string | undefined): Facility["extended"] {
+  const tags = (spec ?? "").split(",").map((t) => t.trim());
+  const is24h = tags.includes("24시간");
+  const out: Facility["extended"] = {};
+  if (tags.includes("야간연장형") || is24h) out.night = true;
+  if (is24h) out.closeTime = "23:59";
+  if (tags.includes("휴일보육")) out.weekend = true;
+  return out;
+}
+
 export function normalizeRow(row: RawRow, overrides: HoursOverrides = {}): Facility | null {
   // 운영 중인 시설만: 정상, 휴지 후 재개. 휴지·폐지는 제외
   if (row.CRSTATUSNAME !== "정상" && row.CRSTATUSNAME !== "재개") return null;
@@ -77,7 +94,8 @@ export function normalizeRow(row: RawRow, overrides: HoursOverrides = {}): Facil
     enrolled,
     vacancy: Math.max(0, capacity - enrolled),
     ageOpen: ageOpen(row),
-    extended: overrides[row.STCODE] ?? {},
+    // 수동 보강 데이터가 있으면 API 값보다 우선
+    extended: { ...extendedFromSpec(row.CRSPEC), ...overrides[row.STCODE] },
     asOf: row.DATASTDRDT ?? "",
   };
 }

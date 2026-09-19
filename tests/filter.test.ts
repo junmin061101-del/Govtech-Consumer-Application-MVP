@@ -51,10 +51,19 @@ describe("matchFacilities", () => {
     expect(matchFacilities([night], late)).toHaveLength(1);
   });
 
-  it("주말은 주말 운영 정보가 있는 시설만 통과한다", () => {
+  it("주말은 휴일보육 시설만 통과하고, 운영 시간은 '확인 필요'로 표시한다", () => {
     expect(matchFacilities([base], { ...filters, day: "sat" })).toHaveLength(0);
     const sat = { ...base, extended: { weekend: true } };
-    expect(matchFacilities([sat], { ...filters, day: "sat" })).toHaveLength(1);
+    const [m] = matchFacilities([sat], { ...filters, day: "sat" });
+    expect(m.hours.confidence).toBe("needs-check");
+  });
+
+  it("종료 시각을 모르는 야간연장형은 통과하되 '확인 필요', 종료 시각을 넘는 요청은 제외한다", () => {
+    const late = { ...filters, start: "19:00", end: "21:00" };
+    const unknownClose = { ...base, extended: { night: true } };
+    expect(matchFacilities([unknownClose], late)[0].hours.confidence).toBe("needs-check");
+    const closes20 = { ...base, extended: { night: true, closeTime: "20:00" } };
+    expect(matchFacilities([closes20], late)).toHaveLength(0);
   });
 
   it("반경 밖은 제외하고 가까운 순으로 정렬한다", () => {
@@ -93,6 +102,18 @@ describe("normalizeRow", () => {
     expect(normalizeRow({ ...row, CRSTATUSNAME: "휴지" })).toBeNull();
     expect(normalizeRow({ ...row, CRSTATUSNAME: "폐지" })).toBeNull();
     expect(normalizeRow({ ...row, LA: "", LO: "" })).toBeNull();
+  });
+
+  it("CRSPEC 에서 야간연장형·휴일보육·24시간을 읽는다", () => {
+    expect(normalizeRow({ ...row, CRSPEC: "일반" })!.extended).toEqual({});
+    expect(normalizeRow({ ...row, CRSPEC: "장애아통합,야간연장형,휴일보육" })!.extended).toEqual({
+      night: true,
+      weekend: true,
+    });
+    expect(normalizeRow({ ...row, CRSPEC: "야간연장형,24시간" })!.extended).toEqual({
+      night: true,
+      closeTime: "23:59",
+    });
   });
 
   it("정원보다 현원이 많아도 빈자리는 음수가 되지 않는다", () => {

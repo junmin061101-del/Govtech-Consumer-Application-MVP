@@ -87,7 +87,10 @@ export function FacilityDetail({
         </div>
         <div>
           <dt className="text-xs text-stone-500">요청 시간대</dt>
-          <dd className="font-medium text-stone-800">{hours.label}</dd>
+          <dd className={`font-medium ${hours.confidence === "needs-check" ? "text-amber-700" : "text-stone-800"}`}>
+            {hours.confidence === "needs-check" && <span aria-hidden>⚠ </span>}
+            {hours.label}
+          </dd>
           <dd className="text-xs text-stone-500">{age !== null ? `만 ${age}세 반 있음` : "연령 미선택"}</dd>
         </div>
       </dl>

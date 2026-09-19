@@ -33,14 +33,20 @@ export function coversHours(f: Facility, filters: Pick<Filters, "day" | "start" 
     if (s >= toMin(BASE_OPEN) && e <= toMin(BASE_CLOSE)) {
       return { label: `기본 보육시간 (${BASE_OPEN}~${BASE_CLOSE})`, confidence: "confirmed" };
     }
-    if (f.extended.night && e <= toMin(f.extended.closeTime ?? "23:59")) {
-      return { label: `야간연장 운영 (~${f.extended.closeTime ?? "심야"})`, confidence: "confirmed" };
+    if (f.extended.night) {
+      // 종료 시각을 아는 경우만 요청 시간과 비교. 모르면 야간연장형이라는 사실만 알려주고 확인을 안내한다.
+      if (f.extended.closeTime) {
+        return e <= toMin(f.extended.closeTime)
+          ? { label: `야간연장 운영 (~${f.extended.closeTime})`, confidence: "confirmed" }
+          : null;
+      }
+      return { label: "야간연장형 · 종료 시각은 시설에 확인", confidence: "needs-check" };
     }
     return null;
   }
 
   if (f.extended.weekend) {
-    return { label: `${filters.day === "sat" ? "토요일" : "일요일"} 운영`, confidence: "confirmed" };
+    return { label: "휴일보육 운영 · 운영 시간은 시설에 확인", confidence: "needs-check" };
   }
   return null;
 }

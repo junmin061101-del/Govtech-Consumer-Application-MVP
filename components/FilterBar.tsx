@@ -14,6 +14,9 @@ interface Props {
   pickMode: boolean;
   onPickMode: (on: boolean) => void;
   resultCount: number;
+  /** 조건을 바꿨지만 아직 검색을 누르지 않은 상태 */
+  dirty: boolean;
+  onSearch: () => void;
 }
 
 const DAYS: { id: Day; label: string }[] = [
@@ -37,12 +40,26 @@ const chip = (on: boolean) =>
       : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
   }`;
 
-export default function FilterBar({ filters, onChange, pickMode, onPickMode, resultCount }: Props) {
+export default function FilterBar({
+  filters,
+  onChange,
+  pickMode,
+  onPickMode,
+  resultCount,
+  dirty,
+  onSearch,
+}: Props) {
   const [open, setOpen] = useState<Section | null>(null);
 
   const toggle = (s: Section) => {
     setOpen((cur) => (cur === s ? null : s));
     if (s !== "place") onPickMode(false);
+  };
+
+  const search = () => {
+    onSearch();
+    onPickMode(false);
+    setOpen(null);
   };
 
   const walkMin = Math.round(filters.radiusM / 67);
@@ -54,20 +71,36 @@ export default function FilterBar({ filters, onChange, pickMode, onPickMode, res
           CareOS <span className="font-medium text-stone-500">동작구 돌봄지도</span>
         </h1>
         <span className="text-xs text-stone-500" aria-live="polite">
-          이용 가능 <b className="text-emerald-700">{resultCount}</b>곳
+          {dirty ? (
+            <span className="font-medium text-amber-700">조건이 바뀌었어요 · 검색을 눌러 주세요</span>
+          ) : (
+            <>
+              이용 가능 <b className="text-emerald-700">{resultCount}</b>곳
+            </>
+          )}
         </span>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto px-4 py-3 [scrollbar-width:none]">
-        <SummaryChip active={open === "age"} filled={filters.age !== null} onClick={() => toggle("age")}>
-          {filters.age === null ? "아이 나이" : `만 ${filters.age}세`}
-        </SummaryChip>
-        <SummaryChip active={open === "time"} filled onClick={() => toggle("time")}>
-          {dayLabel(filters.day)} {filters.start}–{filters.end}
-        </SummaryChip>
-        <SummaryChip active={open === "place"} filled={!!filters.center} onClick={() => toggle("place")}>
-          {filters.center ? `${filters.center.label} · 도보 ${walkMin}분` : "선호 위치"}
-        </SummaryChip>
+      <div className="flex items-center gap-2 px-4 py-3">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none]">
+          <SummaryChip active={open === "age"} filled={filters.age !== null} onClick={() => toggle("age")}>
+            {filters.age === null ? "아이 나이" : `만 ${filters.age}세`}
+          </SummaryChip>
+          <SummaryChip active={open === "time"} filled onClick={() => toggle("time")}>
+            {dayLabel(filters.day)} {filters.start}–{filters.end}
+          </SummaryChip>
+          <SummaryChip active={open === "place"} filled={!!filters.center} onClick={() => toggle("place")}>
+            {filters.center ? `${filters.center.label} · 도보 ${walkMin}분` : "선호 위치"}
+          </SummaryChip>
+        </div>
+        <button
+          onClick={search}
+          className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold text-white ${
+            dirty ? "bg-emerald-600 ring-2 ring-emerald-200" : "bg-emerald-600"
+          }`}
+        >
+          검색
+        </button>
       </div>
 
       {open && (
@@ -93,6 +126,13 @@ export default function FilterBar({ filters, onChange, pickMode, onPickMode, res
           {open === "place" && (
             <PlaceSection filters={filters} onChange={onChange} pickMode={pickMode} onPickMode={onPickMode} />
           )}
+
+          <button
+            onClick={search}
+            className="mt-4 w-full rounded-xl bg-emerald-600 py-3 text-center font-semibold text-white hover:bg-emerald-700"
+          >
+            이 조건으로 검색
+          </button>
         </div>
       )}
     </div>
@@ -167,7 +207,7 @@ function TimeSection({ filters, onChange }: Pick<Props, "filters" | "onChange">)
   );
 }
 
-function PlaceSection({ filters, onChange, pickMode, onPickMode }: Omit<Props, "resultCount">) {
+function PlaceSection({ filters, onChange, pickMode, onPickMode }: Pick<Props, "filters" | "onChange" | "pickMode" | "onPickMode">) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<PlaceHit[]>([]);
   const [msg, setMsg] = useState<string | null>(null);

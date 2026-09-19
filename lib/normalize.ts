@@ -1,4 +1,4 @@
-import type { Facility } from "./types";
+import { AGES, type Facility } from "./types";
 
 /** 열린데이터광장 ChildCareInfoDJ 의 row 중 사용하는 필드 */
 export interface RawRow {
@@ -40,6 +40,7 @@ const inDongjak = (lat: number, lng: number) =>
 /**
  * 연령별 반 개설 여부.
  * M2/M5 는 혼합반이며 각각 만 0~2세, 만 3~5세를 포함한다고 가정한다(보수적 해석).
+ * 어린이집은 만 5세까지라 6~8세는 항상 false.
  */
 function ageOpen(row: RawRow): boolean[] {
   const cls = [
@@ -52,7 +53,8 @@ function ageOpen(row: RawRow): boolean[] {
   ].map(num);
   const m2 = num(row.CLASS_CNT_M2) > 0;
   const m5 = num(row.CLASS_CNT_M5) > 0;
-  return cls.map((c, age) => c > 0 || (age <= 2 ? m2 : m5));
+  const open = cls.map((c, age) => c > 0 || (age <= 2 ? m2 : m5));
+  return AGES.map((age) => open[age] ?? false);
 }
 
 /**
@@ -83,6 +85,7 @@ export function normalizeRow(row: RawRow, overrides: HoursOverrides = {}): Facil
 
   return {
     id: row.STCODE,
+    kind: "daycare",
     name: row.CRNAME,
     type: row.CRTYPENAME ?? "",
     address: row.CRADDR ?? "",

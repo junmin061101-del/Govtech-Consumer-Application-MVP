@@ -19,6 +19,8 @@ const DEFAULTS: Filters = {
 export default function Home() {
   const [data, setData] = useState<FacilitiesPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // draft: 입력 중인 조건 / filters: 검색 버튼으로 적용된 조건 (지도·목록은 이것만 본다)
+  const [draft, setDraft] = useState<Filters>(DEFAULTS);
   const [filters, setFilters] = useState<Filters>(DEFAULTS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickMode, setPickMode] = useState(false);
@@ -36,26 +38,33 @@ export default function Home() {
   const matches = useMemo(() => (data ? matchFacilities(data.facilities, filters) : []), [data, filters]);
   const selected = matches.find((m) => m.facility.id === selectedId) ?? null;
 
+  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(filters), [draft, filters]);
+
   const onChange = useCallback((patch: Partial<Filters>) => {
-    setFilters((f) => ({ ...f, ...patch }));
-    setSelectedId(null);
+    setDraft((f) => ({ ...f, ...patch }));
   }, []);
 
-  const onPick = useCallback((pos: { lat: number; lng: number }) => {
-    setFilters((f) => ({ ...f, center: { ...pos, label: "선택한 위치" } }));
-    setPickMode(false);
+  const onSearch = useCallback(() => {
+    setFilters(draft);
     setSelectedId(null);
+  }, [draft]);
+
+  const onPick = useCallback((pos: { lat: number; lng: number }) => {
+    setDraft((f) => ({ ...f, center: { ...pos, label: "선택한 위치" } }));
+    setPickMode(false);
   }, []);
 
   return (
     <main className="app-grid h-dvh bg-stone-50 text-stone-900">
       <div style={{ gridArea: "filter" }} className="relative z-30">
         <FilterBar
-          filters={filters}
+          filters={draft}
           onChange={onChange}
           pickMode={pickMode}
           onPickMode={setPickMode}
           resultCount={matches.length}
+          dirty={dirty}
+          onSearch={onSearch}
         />
         {data?.source === "sample" && (
           <p className="bg-amber-50 px-4 py-1.5 text-xs text-amber-800">

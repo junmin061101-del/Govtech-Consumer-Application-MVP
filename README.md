@@ -25,6 +25,15 @@ Vercel 배포 시 위 두 값을 Project Settings > Environment Variables 에 �
 - `lib/filter.ts` — 나이·시간·위치·빈자리 필터와 정렬
 - `components/` — 카카오맵, 필터바, 결과 목록/상세
 
+## 리뷰·로그인
+
+- 카카오 로그인 → 서버(`app/api/auth/kakao/*`)가 카카오 사용자를 확인하고 **Firebase 커스텀 토큰**을 발급 →
+  브라우저가 Firebase 로 로그인. 닉네임은 토큰 claim 에 담겨 Firestore 규칙이 서버 값으로 검증한다.
+- 리뷰는 Firestore `reviews` 컬렉션, 문서 ID `시설ID_uid` 로 **시설당 1인 1리뷰**. 규칙은 `firestore.rules`
+  (Firebase 콘솔 > Firestore > 규칙에 붙여넣어 게시).
+- 화면에는 닉네임 첫 글자만 표시한다(실명 노출 방지).
+- Firebase 환경변수가 없으면 리뷰 영역은 "곧 열려요"로만 보이고 나머지 앱은 그대로 동작한다.
+
 ## 시설 종류 (만 0~8세)
 
 | 종류 | 대상 | 데이터 | 빈자리 |

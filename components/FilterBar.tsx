@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { searchPlaces, type PlaceHit } from "@/lib/kakao";
 import { DONGJAK_CENTER, QUICK_PLACES } from "@/lib/places";
 import { walkMinToM } from "@/lib/filter";
+import { maskNickname } from "@/lib/reviews";
+import { useAuth } from "./AuthProvider";
 import { KIND_META, KIND_ORDER } from "@/lib/kinds";
 import { AGES, type Day, type FacilityKind, type Filters } from "@/lib/types";
 
@@ -54,6 +56,7 @@ export default function FilterBar({
   onSearch,
 }: Props) {
   const [open, setOpen] = useState<Section | null>(null);
+  const { user, enabled, loading, signIn, signOut } = useAuth();
 
   const toggle = (s: Section) => {
     setOpen((cur) => (cur === s ? null : s));
@@ -71,9 +74,19 @@ export default function FilterBar({
   return (
     <div className="border-b border-stone-200 bg-white">
       <div className="flex items-center justify-between px-4 pt-3">
-        <h1 className="text-base font-bold tracking-tight text-stone-900">
-          CareOS <span className="font-medium text-stone-500">동작구 돌봄지도</span>
-        </h1>
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="text-base font-bold tracking-tight text-stone-900">
+            CareOS <span className="font-medium text-stone-500">동작구 돌봄지도</span>
+          </h1>
+          {enabled && !loading && (
+            <button
+              onClick={user ? signOut : signIn}
+              className="shrink-0 rounded-full border border-stone-300 px-2.5 py-0.5 text-xs text-stone-600"
+            >
+              {user ? `${maskNickname(user.nickname)} · 로그아웃` : "로그인"}
+            </button>
+          )}
+        </div>
         <span className="text-xs text-stone-500" aria-live="polite">
           {dirty ? (
             <span className="font-medium text-amber-700">조건이 바뀌었어요 · 검색을 눌러 주세요</span>

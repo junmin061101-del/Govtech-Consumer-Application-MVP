@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { KAKAO_KEY, loadKakao, type Kakao } from "@/lib/kakao";
 import { KIND_META } from "@/lib/kinds";
-import { DONGJAK_CENTER } from "@/lib/places";
-import type { Match } from "@/lib/types";
+import type { Bounds, Match } from "@/lib/types";
 
 interface Props {
   matches: Match[];
@@ -14,10 +13,24 @@ interface Props {
   radiusM: number;
   pickMode: boolean;
   onPick: (pos: { lat: number; lng: number }) => void;
+  /** 처음 보여 줄 위치 (관심 지역 또는 시·도 중심) */
+  initialCenter: { lat: number; lng: number };
+  /** 지도 이동이 멈출 때마다 화면 영역과 확대 수준을 알린다 */
+  onBounds: (bounds: Bounds, level: number) => void;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export default function KakaoMap({ matches, selectedId, onSelect, center, radiusM, pickMode, onPick }: Props) {
+export default function KakaoMap({
+  matches,
+  selectedId,
+  onSelect,
+  center,
+  radiusM,
+  pickMode,
+  onPick,
+  initialCenter,
+  onBounds,
+}: Props) {
   const box = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<Kakao>(null);
   const mapRef = useRef<any>(null);
@@ -25,6 +38,12 @@ export default function KakaoMap({ matches, selectedId, onSelect, center, radius
   const area = useRef<any[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(KAKAO_KEY ? null : "no-key");
+
+  // 최신 콜백을 idle 리스너에서 쓰기 위한 ref
+  const boundsRef = useRef(onBounds);
+  useEffect(() => {
+    boundsRef.current = onBounds;
+  }, [onBounds]);
 
   // 지도 생성
   useEffect(() => {
@@ -35,10 +54,21 @@ export default function KakaoMap({ matches, selectedId, onSelect, center, radius
         if (!box.current) return;
         kakaoRef.current = kakao;
         const map = new kakao.maps.Map(box.current, {
-          center: new kakao.maps.LatLng(DONGJAK_CENTER.lat, DONGJAK_CENTER.lng),
+          center: new kakao.maps.LatLng(initialCenter.lat, initialCenter.lng),
           level: 6,
         });
         mapRef.current = map;
+        const report = () => {
+          const b = map.getBounds();
+          const sw = b.getSouthWest();
+          const ne = b.getNorthEast();
+          boundsRef.current(
+            { swLat: sw.getLat(), swLng: sw.getLng(), neLat: ne.getLat(), neLng: ne.getLng() },
+            map.getLevel(),
+          );
+        };
+        kakao.maps.event.addListener(map, "idle", report);
+        report();
         // 필터 패널이 열리고 닫히며 컨테이너 크기가 바뀔 때 타일이 깨지지 않게
         ro = new ResizeObserver(() => map.relayout());
         ro.observe(box.current);
@@ -46,6 +76,8 @@ export default function KakaoMap({ matches, selectedId, onSelect, center, radius
       })
       .catch((e: Error) => setError(e.message));
     return () => ro?.disconnect();
+    // 처음 한 번만 만든다. 이후 위치 이동은 아래 효과들이 맡는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 시설 핀

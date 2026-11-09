@@ -4,7 +4,7 @@ import type { Facility, Filters, Match } from "./types";
 export const BASE_OPEN = "07:30";
 export const BASE_CLOSE = "19:30";
 
-const toMin = (t: string) => {
+export const toMin = (t: string) => {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
 };
@@ -29,6 +29,14 @@ export function coversHours(f: Facility, filters: Pick<Filters, "day" | "start" 
   const s = toMin(filters.start);
   const e = toMin(filters.end);
   if (e <= s) return null;
+
+  // 요일별 운영시간을 아는 시설은 그 시간으로 판정한다
+  const known = f.hours?.[filters.day];
+  if (known) {
+    return s >= toMin(known.open) && e <= toMin(known.close)
+      ? { label: `운영 ${known.open}~${known.close}`, confidence: "confirmed" }
+      : null;
+  }
 
   if (f.kind !== "daycare") {
     if (filters.day === "weekday" && e <= toMin(BASE_CLOSE)) {
@@ -59,12 +67,42 @@ export function coversHours(f: Facility, filters: Pick<Filters, "day" | "start" 
   return null;
 }
 
-export function matchFacilities(all: Facility[], filters: Filters): Match[] {
+export const fromMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/**
+ * 시설이 그 요일에 운영하는 구간(분). 시작·끝을 모두 아는 경우만 돌려준다(조합 탐색용).
+ * - 원천·보강 데이터의 hours 가 있으면 그것을 쓴다.
+ * - 어린이집 평일: 기본 보육시간, 야간연장 종료 시각을 알면 그 시각까지.
+ * - 그 밖(유치원·센터의 운영시간, 휴일보육 시간대)은 데이터가 없어 null.
+ */
+export function facilityInterval(f: Facility, day: Filters["day"]): { open: number; close: number } | null {
+  const h = f.hours?.[day];
+  if (h) return { open: toMin(h.open), close: toMin(h.close) };
+  if (f.kind !== "daycare" || day !== "weekday") return null;
+  const close = f.extended.night && f.extended.closeTime ? f.extended.closeTime : BASE_CLOSE;
+  return { open: toMin(BASE_OPEN), close: Math.max(toMin(close), toMin(BASE_CLOSE)) };
+}
+
+/** 나이·종류·위치 조건 (시간·빈자리 제외) */
+export function basicMatch(facility: Facility, filters: Filters): { ok: boolean; distanceM: number | null } {
+  if (filters.kinds.length > 0 && !filters.kinds.includes(facility.kind)) return { ok: false, distanceM: null };
+  if (filters.age !== null && !facility.ageOpen[filters.age]) return { ok: false, distanceM: null };
+  if (!filters.center) return { ok: true, distanceM: null };
+  const distanceM = haversineM(filters.center, facility);
+  return { ok: distanceM <= filters.radiusM, distanceM };
+}
+
+/**
+ * 조건에 맞는 시설.
+ * opts.full 이면 반대로 '정원이 찬 것으로 확인된' 시설만 돌려준다(빈자리 알림 대상으로 보여 주기 위해).
+ */
+export function matchFacilities(all: Facility[], filters: Filters, opts: { full?: boolean } = {}): Match[] {
   const out: Match[] = [];
   for (const facility of all) {
     if (filters.kinds.length > 0 && !filters.kinds.includes(facility.kind)) continue;
     // 빈자리가 0으로 확인된 곳만 제외. 빈자리 정보가 없는 시설(null)은 지도에 남긴다.
-    if (facility.vacancy !== null && facility.vacancy <= 0) continue;
+    const isFull = facility.vacancy !== null && facility.vacancy <= 0;
+    if (isFull !== Boolean(opts.full)) continue;
     if (filters.age !== null && !facility.ageOpen[filters.age]) continue;
 
     const hours = coversHours(facility, filters);

@@ -1,0 +1,44 @@
+# main: 검사를 통과하면 prod 프로젝트에 Hosting·Functions·Firestore 규칙/색인·Remote Config 를 배포한다.
+# 필요한 설정 (GitHub > Settings > Environments > prod): preview.yml 과 같은 vars (prod 값)
+# Functions 비밀값은 Secret Manager 에 있으므로 여기서 다루지 않는다 (README '비밀값' 참고).
+name: deploy
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency: { group: deploy-prod, cancel-in-progress: false }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm ci --prefix functions
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:emulator
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ vars.FIREBASE_MEASUREMENT_ID }}
+          NEXT_PUBLIC_KAKAO_MAP_KEY: ${{ vars.KAKAO_MAP_KEY }}
+          NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_KEY: ${{ vars.RECAPTCHA_ENTERPRISE_KEY }}
+      - run: node scripts/check-bundle.mjs out
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - run: npx firebase deploy --project prod --only hosting,functions,firestore,remoteconfig --force

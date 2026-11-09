@@ -40,6 +40,13 @@ export const KIND_META: Record<FacilityKind, KindMeta> = {
     ages: [6, 8],
     apply: null,
   },
+  kiumcenter: {
+    label: "우리동네키움센터",
+    short: "키",
+    color: "#0d9488",
+    ages: [6, 8],
+    apply: null,
+  },
 };
 
-export const KIND_ORDER: FacilityKind[] = ["daycare", "kindergarten", "localcenter", "togethercare"];
+export const KIND_ORDER: FacilityKind[] = ["daycare", "kindergarten", "localcenter", "togethercare", "kiumcenter"];

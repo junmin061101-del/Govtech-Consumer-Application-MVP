@@ -23,7 +23,8 @@ const Stars = ({ value }: { value: number }) => (
 const tagLabel = (id: string) => REVIEW_TAGS.find((t) => t.id === id)?.label ?? id;
 
 export default function Reviews({ facilityId }: { facilityId: string }) {
-  const { user, loading: authLoading, enabled, signIn } = useAuth();
+  const { firebase, signIn } = useAuth();
+  const { enabled, user } = firebase;
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,7 +93,7 @@ export default function Reviews({ facilityId }: { facilityId: string }) {
       </ul>
 
       <div className="mt-4">
-        {authLoading ? null : user ? (
+        {user ? (
           // key 로 시설·내 리뷰가 바뀔 때 폼 상태를 새로 시작한다
           <ReviewForm key={`${facilityId}:${mine?.id ?? "new"}`} facilityId={facilityId} mine={mine} user={user} />
         ) : (

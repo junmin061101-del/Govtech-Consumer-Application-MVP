@@ -1,0 +1,32 @@
+{
+  "parameters": {
+    "flag_matching": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "valueType": "BOOLEAN",
+      "description": "돌봄 매칭 지도: 상태 배지·조합 탐색·범위 넓혀 다시 찾기"
+    },
+    "flag_vacancy": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "valueType": "BOOLEAN",
+      "description": "빈자리 알림"
+    },
+    "flag_community": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "valueType": "BOOLEAN",
+      "description": "동네 게시판"
+    },
+    "flag_agent": {
+      "defaultValue": {
+        "value": "true"
+      },
+      "valueType": "BOOLEAN",
+      "description": "AI 상담 (Claude 에이전트)"
+    }
+  }
+}

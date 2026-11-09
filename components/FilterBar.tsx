@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { searchPlaces, type PlaceHit } from "@/lib/kakao";
-import { DONGJAK_CENTER, QUICK_PLACES } from "@/lib/places";
 import { walkMinToM } from "@/lib/filter";
-import { maskNickname } from "@/lib/reviews";
 import { useAuth } from "./AuthProvider";
 import { KIND_META, KIND_ORDER } from "@/lib/kinds";
+import { chip, TIMES } from "@/lib/ui";
+import { WALK_STEPS } from "@/lib/widen";
 import { AGES, type Day, type FacilityKind, type Filters } from "@/lib/types";
+
+export interface QuickPlace {
+  label: string;
+  lat: number;
+  lng: number;
+}
 
 type Section = "age" | "kind" | "time" | "place";
 
@@ -22,6 +28,10 @@ interface Props {
   /** 조건을 바꿨지만 아직 검색을 누르지 않은 상태 */
   dirty: boolean;
   onSearch: () => void;
+  /** 관심 지역(행정동) 빠른 선택 */
+  quickPlaces: QuickPlace[];
+  /** 장소 검색 기준점 (지도 중심) */
+  searchCenter: { lat: number; lng: number };
 }
 
 const DAYS: { id: Day; label: string }[] = [
@@ -30,20 +40,7 @@ const DAYS: { id: Day; label: string }[] = [
   { id: "sun", label: "일요일" },
 ];
 
-const WALK = [5, 10, 15];
-
-const TIMES = Array.from({ length: 37 }, (_, i) => {
-  const min = 6 * 60 + i * 30;
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-});
-
 const dayLabel = (d: Day) => DAYS.find((x) => x.id === d)!.label;
-const chip = (on: boolean) =>
-  `rounded-full border px-3.5 py-1.5 text-sm transition ${
-    on
-      ? "border-emerald-600 bg-emerald-600 font-semibold text-white"
-      : "border-stone-300 bg-white text-stone-700 hover:border-stone-400"
-  }`;
 
 export default function FilterBar({
   filters,
@@ -54,9 +51,10 @@ export default function FilterBar({
   availableKinds,
   dirty,
   onSearch,
+  quickPlaces,
+  searchCenter,
 }: Props) {
   const [open, setOpen] = useState<Section | null>(null);
-  const { user, enabled, loading, signIn, signOut } = useAuth();
 
   const toggle = (s: Section) => {
     setOpen((cur) => (cur === s ? null : s));
@@ -75,19 +73,11 @@ export default function FilterBar({
     <div className="border-b border-stone-200 bg-white">
       <div className="flex items-center justify-between px-4 pt-3">
         <div className="flex min-w-0 items-center gap-2">
-          <h1 className="text-base font-bold tracking-tight text-stone-900">
-            CareOS <span className="font-medium text-stone-500">동작구 돌봄지도</span>
+          <h1 className="shrink-0 text-base font-bold tracking-tight text-stone-900">
+            CareOS <span className="font-medium text-stone-500">돌봄지도</span>
           </h1>
-          {enabled && !loading && (
-            <button
-              onClick={user ? signOut : signIn}
-              className="shrink-0 rounded-full border border-stone-300 px-2.5 py-0.5 text-xs text-stone-600"
-            >
-              {user ? `${maskNickname(user.nickname)} · 로그아웃` : "로그인"}
-            </button>
-          )}
         </div>
-        <span className="text-xs text-stone-500" aria-live="polite">
+        <span className="shrink-0 pl-2 text-xs text-stone-500" aria-live="polite">
           {dirty ? (
             <span className="font-medium text-amber-700">조건이 바뀌었어요 · 검색을 눌러 주세요</span>
           ) : (
@@ -148,7 +138,14 @@ export default function FilterBar({
           {open === "time" && <TimeSection filters={filters} onChange={onChange} />}
 
           {open === "place" && (
-            <PlaceSection filters={filters} onChange={onChange} pickMode={pickMode} onPickMode={onPickMode} />
+            <PlaceSection
+              filters={filters}
+              onChange={onChange}
+              pickMode={pickMode}
+              onPickMode={onPickMode}
+              quickPlaces={quickPlaces}
+              searchCenter={searchCenter}
+            />
           )}
 
           <button
@@ -255,13 +252,21 @@ function TimeSection({ filters, onChange }: Pick<Props, "filters" | "onChange">)
         </select>
       </div>
       <p className="text-xs text-stone-500">
-        평일 19:30 이후·주말은 야간연장형·휴일보육 어린이집만 표시돼요. 정확한 운영 시간은 시설에 확인해 주세요.
+        그 시간에 운영하는 시설만 보여요. 평일 19:30 이후·주말은 야간연장형·휴일보육 어린이집만 표시돼요. 정확한 운영
+        시간은 시설에 확인해 주세요.
       </p>
     </div>
   );
 }
 
-function PlaceSection({ filters, onChange, pickMode, onPickMode }: Pick<Props, "filters" | "onChange" | "pickMode" | "onPickMode">) {
+function PlaceSection({
+  filters,
+  onChange,
+  pickMode,
+  onPickMode,
+  quickPlaces,
+  searchCenter,
+}: Pick<Props, "filters" | "onChange" | "pickMode" | "onPickMode" | "quickPlaces" | "searchCenter">) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<PlaceHit[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -274,12 +279,12 @@ function PlaceSection({ filters, onChange, pickMode, onPickMode }: Pick<Props, "
     }
     const id = ++seq.current;
     const t = setTimeout(() => {
-      searchPlaces(q, DONGJAK_CENTER)
+      searchPlaces(q, searchCenter)
         .then((r) => id === seq.current && setHits(r))
         .catch(() => id === seq.current && setMsg("장소 검색을 사용할 수 없어요 (카카오맵 키 확인)"));
     }, 300);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, searchCenter]);
 
   const useHere = () => {
     setMsg(null);
@@ -297,7 +302,7 @@ function PlaceSection({ filters, onChange, pickMode, onPickMode }: Pick<Props, "
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="집·직장·역 이름 검색 (예: 노량진역)"
+          placeholder="집·직장·역 이름 검색 (예: 시청역)"
           className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm outline-none focus:border-emerald-600"
         />
         {hits.length > 0 && (
@@ -321,8 +326,9 @@ function PlaceSection({ filters, onChange, pickMode, onPickMode }: Pick<Props, "
         )}
       </div>
 
+      {quickPlaces.length > 0 && <p className="-mb-1 text-xs text-stone-500">관심 지역</p>}
       <div className="flex flex-wrap gap-2">
-        {QUICK_PLACES.map((p) => (
+        {quickPlaces.map((p) => (
           <button
             key={p.label}
             className={chip(filters.center?.label === p.label)}
@@ -351,8 +357,8 @@ function PlaceSection({ filters, onChange, pickMode, onPickMode }: Pick<Props, "
 
       <div>
         <p className="mb-1.5 text-xs text-stone-500">이동 범위</p>
-        <div className="flex gap-2">
-          {WALK.map((m) => (
+        <div className="flex flex-wrap gap-2">
+          {WALK_STEPS.map((m) => (
             <button
               key={m}
               className={chip(Math.round(filters.radiusM / 67) === m)}

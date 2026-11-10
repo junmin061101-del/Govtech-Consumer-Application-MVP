@@ -18,6 +18,8 @@ const S = {
   NICKNAME_SECRET: defineSecret("NICKNAME_SECRET"),
   SEOUL_OPEN_API_KEY: defineSecret("SEOUL_OPEN_API_KEY"),
   DATA_GO_KR_SERVICE_KEY: defineSecret("DATA_GO_KR_SERVICE_KEY"),
+  // 유치원 주소 → 좌표 (카카오 로컬 API, REST 키)
+  KAKAO_REST_API_KEY: defineSecret("KAKAO_REST_API_KEY"),
 };
 const ALL = Object.values(S);
 

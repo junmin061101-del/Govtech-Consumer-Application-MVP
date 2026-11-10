@@ -158,8 +158,9 @@ content/knowledge/      그 밖의 안내 문서 (CareOS 표시 기준 등) — 
 | 소스 | 상태 |
 | --- | --- |
 | 서울시 어린이집 정보 (`ChildCareInfo`) | 서울 25개 구 전체를 한 서비스로 매일 수집 (약 4천 곳 운영 중). 중간에 끊긴 회차는 저장만 하고 폐지 정리는 건너뛴다 |
-| 지역아동센터 | 공공데이터포털 [전국지역아동센터표준데이터](https://www.data.go.kr/data/15129438/standard.do) OpenAPI (`DATA_GO_KR_SERVICE_KEY`, 활용신청 필요). 정원·현원·종사자수·좌표·기준일. 지자체가 각자 등록하므로 수집 보고의 구별 건수로 범위 확인 |
-| 우리동네키움센터 | 서울 열린데이터광장 OA-20965 (운영시간·정원 포함) 확인, API 서비스명·필드명 미확인이라 어댑터 대기 (TODO) |
+| 유치원 | 서울 열린데이터광장 '서울시 유치원 일반현황' `childSchoolInfo` (유치원알리미 공시, 2025년 이후 공시분만). 좌표가 없어 카카오 로컬 주소 검색(`KAKAO_REST_API_KEY`)으로 변환하고 Firestore `geocodes` 에 저장. 운영시간·연령별 반·원아 수 (정원 없음 → 빈자리 모름) |
+| 지역아동센터 | 서울 열린데이터광장 '서울시 지역아동센터 시설현황정보' `TnFcltySttusInfo1003` (OA-20967). 좌표·학기/토요일 운영시간 (정원·현원 없음). 공공데이터포털 표준데이터 어댑터(`localCenterStd.ts`)는 다른 시·도용으로 남겨 둠 |
+| 우리동네키움센터 | 서울 열린데이터광장 '서울시 우리동네키움센터 시설현황정보' `TnFcltySttusInfo1001` (OA-20965). 좌표·운영시간·상시 정원 (현원 없음) |
 | 다함께돌봄센터 | 서울 전체를 다루는 공개 데이터 없음 (2026-11 조사, 일부 타 지자체만 있음) |
 
 어린이집 필드는 원천인 보육정보공개 API 서비스명세서(cpmsapi030 v1.7)와 같다: 보육교직원수 `CHCRTESCNT`,
@@ -220,8 +221,7 @@ API 키가 없다. Cloud Functions 의 기본 서비스 계정이 이 Firebase �
 
 ## 운영 전 확인할 것 (TODO 목록)
 
-- 서울 24개 구 어린이집 OpenAPI 서비스명 (`data/sources/seoul-childcare.json`)
-- 우리동네키움센터 OA-20965 API 명세, 다함께돌봄센터 서울 데이터
+- 다함께돌봄센터 서울 데이터, 유치원·지역아동센터 정원·현원(빈자리) 공개 자료
 - Firebase 프로젝트(dev/prod) 생성, `.firebaserc` 실제 ID, Workload Identity 연결, reCAPTCHA Enterprise 키
 - Stream Firestore to BigQuery 확장 설치 후 설정 내보내기 (`docs/bigquery.md`)
 - SMS 인증 사업자 (`lib/server/phone.ts`), 알림톡 대행사 (`lib/server/notify.ts`)

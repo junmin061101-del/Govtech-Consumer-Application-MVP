@@ -29,7 +29,7 @@ export function availability(f: Facility, now: Date = new Date()): Availability 
   const asOfDate = f.asOf ? parseDate(f.asOf) : null;
   const asOf = asOfDate ? iso(asOfDate) : null;
   if (f.capacity === null || f.enrolled === null || f.vacancy === null) {
-    return { status: "needs-check", label: "확인 필요 · 정원 정보 없음", asOf };
+    return { status: "needs-check", label: `확인 필요 · ${f.capacity === null ? "정원 정보 없음" : `정원 ${f.capacity}명 · 빈자리 정보 없음`}`, asOf };
   }
   if (!asOfDate) return { status: "needs-check", label: "확인 필요 · 기준일 모름", asOf };
   const ageDays = (now.getTime() - asOfDate.getTime()) / 86_400_000;

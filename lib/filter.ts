@@ -22,8 +22,9 @@ export function haversineM(a: { lat: number; lng: number }, b: { lat: number; ln
 /**
  * 요청 시간대를 시설이 커버하는지 판정한다.
  * - 어린이집: 평일 기본 보육시간 안이면 '확인됨'. 야간·주말은 야간연장형·휴일보육 시설만.
- * - 유치원·지역아동센터·다함께돌봄센터: 운영시간 데이터가 없으므로 평일 19:30 이전 요청만
- *   '확인 필요'로 통과시키고, 야간·주말 요청은 제외한다.
+ * - 요일별 운영시간(hours)을 아는 시설(유치원·지역아동센터·키움센터 등)은 그 시간으로 '확인됨'.
+ * - 운영시간을 모르는 그 밖의 시설(다함께돌봄센터 등)은 평일 19:30 이전 요청만 '확인 필요'로 통과시키고,
+ *   야간·주말 요청은 제외한다.
  */
 export function coversHours(f: Facility, filters: Pick<Filters, "day" | "start" | "end">): Match["hours"] | null {
   const s = toMin(filters.start);

@@ -1,4 +1,5 @@
-// 유치원·지역아동센터·다함께돌봄센터: 정원·빈자리 공개 API를 아직 못 구해 카카오맵 장소 정보로 위치만 채운다.
+// 다함께돌봄센터: 서울 전체 공개 데이터가 없어 카카오맵 장소 정보로 위치만 채운다.
+// (유치원·지역아동센터·우리동네키움센터는 서울 공개 데이터로 서버가 매일 수집한다 — lib/server/sources)
 // 카카오 약관상 검색 결과를 저장·재배포하지 않고, 브라우저에서 실시간 조회해 지도에 그대로 표시한다.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { KIND_META } from "./kinds";
@@ -13,22 +14,13 @@ const SEARCHES: {
   name: RegExp;
   category: RegExp;
 }[] = [
-  { kind: "kindergarten", type: "유치원", keyword: "유치원", name: /유치원/, category: /유아교육/ },
-  {
-    kind: "localcenter",
-    type: "지역아동센터",
-    keyword: "지역아동센터",
-    name: /지역아동|아동복지센터|아동센터/,
-    category: /사회복지시설/,
-  },
   { kind: "togethercare", type: "다함께돌봄센터", keyword: "다함께돌봄센터", name: /다함께돌봄/, category: /사회복지시설|아동/ },
-  { kind: "kiumcenter", type: "우리동네키움센터", keyword: "키움센터", name: /키움센터/, category: /사회복지시설|아동/ },
 ];
 
 // 이름에 휴원·폐업이 표시된 곳은 지도에서 뺀다
 const CLOSED = /휴원|폐원|폐업|휴업|폐쇄/;
 
-const CACHE_PREFIX = "careos:extras:v2:";
+const CACHE_PREFIX = "careos:extras:v3:";
 
 function ageOpenFor(kind: FacilityKind): boolean[] {
   const [lo, hi] = KIND_META[kind].ages;

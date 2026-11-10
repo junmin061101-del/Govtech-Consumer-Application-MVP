@@ -5,6 +5,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { useCurrentLocation, type Here } from "@/components/useCurrentLocation";
 import { api } from "@/lib/ui";
 import { reviewLinks } from "@/lib/reviewLinks";
+import BlogPosts from "@/components/BlogPosts";
 
 // 대화 기록은 이 탭(sessionStorage)에만 둔다. 서버는 저장하지 않고, 매 요청에 기록 전체를 그대로 다시 보낸다.
 // 기록은 덧붙이기만 한다 (Gemini 응답의 thoughtSignature 가 앞선 대화와 이어져 있어 중간을 고치면 안 된다).
@@ -48,12 +49,12 @@ const TOOL_LABELS: Record<string, string> = {
 type ReviewLinkView = { label: string; url: string };
 
 /** get_review_links 도구 결과(시설 이름·주소) → 버튼용 링크. 링크는 지도 화면과 같은 규칙으로 앱이 만든다 */
-function reviewLinksOf(p: Part): { facility: string; links: ReviewLinkView[] } | null {
+function reviewLinksOf(p: Part): { facility: string; address: string; links: ReviewLinkView[] } | null {
   const fr = p.functionResponse as { name?: string; response?: { facility?: unknown; address?: unknown } } | undefined;
   if (fr?.name !== "get_review_links" || typeof fr.response?.facility !== "string" || !fr.response.facility) return null;
   const name = fr.response.facility;
   const address = typeof fr.response.address === "string" ? fr.response.address : "";
-  return { facility: name, links: reviewLinks({ name, address }) };
+  return { facility: name, address, links: reviewLinks({ name, address }) };
 }
 
 function load(): Msg[] {
@@ -173,13 +174,13 @@ export default function Agent() {
   };
 
   // 화면에 보이는 것: 사용자 질문, AI 의 글, 도구 사용 표시. 도구 결과·사고 내용은 숨긴다
-  type View = { key: string; kind: "user" | "assistant" | "tool" | "links"; text: string; links?: ReviewLinkView[] };
+  type View = { key: string; kind: "user" | "assistant" | "tool" | "links"; text: string; links?: ReviewLinkView[]; address?: string };
   const view = messages.flatMap((m, i): View[] => {
     if (m.role === "user") {
       // 후기 링크 도구의 결과는 버튼으로 바로 보여 준다 (AI 가 주소를 다시 쓰지 않게)
       const linkViews = m.parts.flatMap((p, j): View[] => {
         const links = reviewLinksOf(p);
-        return links ? [{ key: `l${i}-${j}`, kind: "links", text: links.facility, links: links.links }] : [];
+        return links ? [{ key: `l${i}-${j}`, kind: "links", text: links.facility, links: links.links, address: links.address }] : [];
       });
       if (linkViews.length) return linkViews;
       const text = m.parts.map((p) => p.text ?? "").join("").replace(CONTEXT_RE, "").trim();
@@ -255,6 +256,8 @@ export default function Agent() {
                     </a>
                   ))}
                 </div>
+                {/* 블로그 글은 누를 때 화면에만 불러온다 (AI 대화 기록에 넣지 않는다) */}
+                <BlogPosts name={v.text} address={v.address} />
               </div>
             ) : v.kind === "user" ? (
               <div key={v.key} className="flex justify-end">

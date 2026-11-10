@@ -70,6 +70,10 @@ export default function Privacy() {
             보관(국외 저장 가능)
           </li>
           <li>카카오: 지도·장소 검색 (회원 정보는 보내지 않음)</li>
+          <li>
+            네이버 클라우드 플랫폼(NAVER API HUB 블로그 검색): &lsquo;네이버 블로그 글 바로 보기&rsquo;를 누를 때 시설 이름만 보냅니다 (회원
+            정보는 보내지 않음). 검색 결과는 저장하지 않고 AI 상담에도 넣지 않습니다.
+          </li>
           <li>카카오 알림톡 발송 대행사: 알림 수신에 동의한 경우 휴대폰 번호와 알림 내용 (업체 확정 후 고지)</li>
           <li>
             Google Vertex AI(Gemini, 처리 위치: Google global 리전 — 국외 처리 가능): AI 상담에 직접 입력한 문장, 그리고

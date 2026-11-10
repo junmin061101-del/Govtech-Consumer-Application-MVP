@@ -20,6 +20,9 @@ const S = {
   DATA_GO_KR_SERVICE_KEY: defineSecret("DATA_GO_KR_SERVICE_KEY"),
   // 유치원 주소 → 좌표 (카카오 로컬 API, REST 키)
   KAKAO_REST_API_KEY: defineSecret("KAKAO_REST_API_KEY"),
+  // 시설 블로그 후기 (NAVER API HUB 검색, 네이버 클라우드 플랫폼 Application 인증 정보)
+  NAVER_API_HUB_CLIENT_ID: defineSecret("NAVER_API_HUB_CLIENT_ID"),
+  NAVER_API_HUB_CLIENT_SECRET: defineSecret("NAVER_API_HUB_CLIENT_SECRET"),
 };
 const ALL = Object.values(S);
 

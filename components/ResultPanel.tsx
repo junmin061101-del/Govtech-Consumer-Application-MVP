@@ -8,6 +8,7 @@ import type { Facility, Match } from "@/lib/types";
 import { chip } from "@/lib/ui";
 import type { WidenStep } from "@/lib/widen";
 import Reviews from "./Reviews";
+import BlogPosts from "./BlogPosts";
 import { reviewLinks } from "@/lib/reviewLinks";
 
 const fmtDist = (m: number | null) =>
@@ -319,6 +320,7 @@ export function FacilityDetail({
             </a>
           ))}
         </div>
+        <BlogPosts key={f.id} name={f.name} address={f.address} />
         <p className="text-[11px] leading-snug text-stone-400">외부 사이트로 이동해요. 블로그 후기는 개인 의견이며 협찬 글이 섞여 있을 수 있어요.</p>
       </div>
 

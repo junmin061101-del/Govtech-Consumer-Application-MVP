@@ -17,6 +17,7 @@ import * as phoneSend from "@/server/api/phone/send/route";
 import * as phoneVerify from "@/server/api/phone/verify/route";
 import * as regionsLocate from "@/server/api/regions/locate/route";
 import * as regions from "@/server/api/regions/route";
+import * as reviewsBlog from "@/server/api/reviews/blog/route";
 import * as signup from "@/server/api/signup/route";
 
 type Handler = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Response | Promise<Response>;
@@ -41,6 +42,7 @@ export const ROUTES: [pattern: string, mod: RouteModule][] = [
   ["/api/phone/verify", phoneVerify],
   ["/api/regions/locate", regionsLocate],
   ["/api/regions", regions as RouteModule],
+  ["/api/reviews/blog", reviewsBlog as RouteModule],
   ["/api/signup", signup],
 ];
 

@@ -3,7 +3,7 @@ import { encodeGeohash } from "@/lib/geohash";
 import { normalizeRow } from "@/lib/normalize";
 import { facilitiesInBounds, syncFacilities } from "@/lib/server/facilities";
 import type { FacilitySource } from "@/lib/server/sources";
-import { districtServices } from "@/lib/server/sources/seoulChildcare";
+import { childcareService, DISTRICTS, fetchAll, summarize } from "@/lib/server/sources/seoulChildcare";
 import type { Facility } from "@/lib/types";
 import { fresh } from "./helpers";
 
@@ -46,10 +46,36 @@ describe("시설 수집", () => {
     expect(r.changes).toEqual([{ id: "1", prevVacancy: 0, vacancy: 2 }]);
   });
 
-  it("구별 서비스명은 설정 파일 값만 쓴다 (확인 안 된 구는 비워 둔다)", () => {
-    const list = districtServices();
-    expect(list).toHaveLength(25);
-    expect(list.find((d) => d.code === "11590")?.service).toBe("ChildCareInfoDJ");
+  it("서울시 어린이집 정보(ChildCareInfo) 한 서비스로 25개 구 전체를 페이지 나눠 받는다", async () => {
+    expect(childcareService()).toBe("ChildCareInfo");
+    expect(DISTRICTS).toHaveLength(25);
+    const all = Array.from({ length: 2300 }, (_, i) => ({ STCODE: `${i % 2 ? "11590" : "11680"}${String(i).padStart(6, "0")}` }));
+    const urls: string[] = [];
+    const fake = (async (url: string) => {
+      urls.push(url);
+      const [s, e] = url.split("/").slice(-3, -1).map(Number);
+      return new Response(JSON.stringify({ ChildCareInfo: { list_total_count: all.length, row: all.slice(s - 1, e) } }));
+    }) as unknown as typeof fetch;
+    const rows = await fetchAll("k", "ChildCareInfo", false, fake);
+    expect(rows).toHaveLength(2300);
+    expect(urls.map((u) => u.split("/").slice(-3, -1).join("-"))).toEqual(["1-1000", "1001-2000", "2001-2300"]);
+  });
+
+  it("중간에 끊기면 실패로 본다 (그 회차는 폐지 시설 정리를 하지 않는다)", async () => {
+    const fake = (async (url: string) =>
+      url.includes("/1/1000/")
+        ? new Response(JSON.stringify({ ChildCareInfo: { list_total_count: 1500, row: [{ STCODE: "1" }] } }))
+        : new Response("x", { status: 500 })) as unknown as typeof fetch;
+    await expect(fetchAll("k", "ChildCareInfo", false, fake)).rejects.toThrow();
+  });
+
+  it("수집 보고는 시설코드 앞 5자리로 구별 건수를 센다", () => {
+    const a = row("11680000001", 37.5, 127.05);
+    const b = row("11590000001", 37.5131, 126.9426);
+    const parts = summarize([{ STCODE: a.id }, { STCODE: b.id }, { STCODE: "11590000002" }], [a, b]);
+    expect(parts.find((p) => p.key === "11680")?.count).toBe(1);
+    expect(parts.find((p) => p.key === "11590")?.count).toBe(1);
+    expect(parts).toHaveLength(25);
   });
 
   it("geohash", () => {

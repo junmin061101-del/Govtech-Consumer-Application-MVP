@@ -59,7 +59,7 @@ npm run dev                           # 터미널 2: http://localhost:3000 → /
 
 비밀이 아닌 서버 설정은 `functions/.env.<프로젝트ID>`: `ADMIN_EMAILS`(관리자 이메일, 쉼표 — 이메일 확인을 마친 계정만),
 `ADMIN_UIDS`(관리자 uid), `APP_CHECK_ENFORCE=true`(prod),
-`LLM_MODEL`, `SEOUL_CHILDCARE_SERVICES`.
+`LLM_MODEL`, `SEOUL_CHILDCARE_SERVICE`.
 
 ### 보안
 
@@ -157,7 +157,7 @@ content/knowledge/      그 밖의 안내 문서 (CareOS 표시 기준 등) — 
 
 | 소스 | 상태 |
 | --- | --- |
-| 서울 구별 어린이집 정보(표준 데이터) | **동작구(`ChildCareInfoDJ`)만 서비스명 확인됨.** 나머지 24개 구는 `data/sources/seoul-childcare.json` 의 `service` 를 채우거나 `SEOUL_CHILDCARE_SERVICES` 로 넣어야 수집된다 (TODO) |
+| 서울시 어린이집 정보 (`ChildCareInfo`) | 서울 25개 구 전체를 한 서비스로 매일 수집 (약 4천 곳 운영 중). 중간에 끊긴 회차는 저장만 하고 폐지 정리는 건너뛴다 |
 | 지역아동센터 | 공공데이터포털 [전국지역아동센터표준데이터](https://www.data.go.kr/data/15129438/standard.do) OpenAPI (`DATA_GO_KR_SERVICE_KEY`, 활용신청 필요). 정원·현원·종사자수·좌표·기준일. 지자체가 각자 등록하므로 수집 보고의 구별 건수로 범위 확인 |
 | 우리동네키움센터 | 서울 열린데이터광장 OA-20965 (운영시간·정원 포함) 확인, API 서비스명·필드명 미확인이라 어댑터 대기 (TODO) |
 | 다함께돌봄센터 | 서울 전체를 다루는 공개 데이터 없음 (2026-11 조사, 일부 타 지자체만 있음) |

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import ChildAgesInput, { fromMonths, toMonths, type ChildDraft } from "@/components/ChildAgesInput";
 import PageShell, { Card } from "@/components/PageShell";
+import InstallApp from "@/components/InstallApp";
 import PhoneVerify from "@/components/PhoneVerify";
 import { DongPicker, useRegions } from "@/components/RegionPicker";
 import { ageText, currentMonths, MAX_INTEREST_DONGS } from "@/lib/profile";
@@ -54,6 +55,10 @@ export default function Me() {
 
       {flags.vacancy && <Alerts regionsLabel={(c) => dongLabel(regions, c)} />}
       <Inbox />
+
+      <Card title="앱처럼 쓰기">
+        <InstallApp />
+      </Card>
 
       <Card title="약관·동의">
         <ul className="space-y-1 text-sm text-stone-700">

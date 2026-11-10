@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { auth, firebaseConfigured } from "@/lib/firebase";
 import BottomNav, { TABBED_PATHS } from "./BottomNav";
+import FloatingAgent from "./FloatingAgent";
 import { FLAG_NAMES, type Flags } from "@/lib/flags";
 import { guardRedirect } from "@/lib/guard";
 import type { ProfileView } from "@/lib/profile";
@@ -119,6 +120,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }
 
   const tabbed = Boolean(user?.onboarded) && TABBED_PATHS.includes(pathname.replace(/\/$/, "") || "/");
+  const onAgentPage = (pathname.replace(/\/$/, "") || "/") === "/agent";
   return (
     <Ctx.Provider value={value}>
       {loading || target ? (
@@ -131,6 +133,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       ) : (
         children
       )}
+      {/* 따라다니는 AI 상담 버튼: 가입을 마친 회원, AI 상담이 켜진 경우. AI 상담 탭에서는 버튼만 숨긴다(작은 창은 유지) */}
+      {!loading && !target && user?.onboarded && flags.agent && <FloatingAgent hidden={onAgentPage} />}
     </Ctx.Provider>
   );
 }

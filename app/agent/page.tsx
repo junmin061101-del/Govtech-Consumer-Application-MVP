@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { useCurrentLocation, type Here } from "@/components/useCurrentLocation";
 import { api } from "@/lib/ui";
+import { reviewLinks } from "@/lib/reviewLinks";
 
 // 대화 기록은 이 탭(sessionStorage)에만 둔다. 서버는 저장하지 않고, 매 요청에 기록 전체를 그대로 다시 보낸다.
 // 기록은 덧붙이기만 한다 (Gemini 응답의 thoughtSignature 가 앞선 대화와 이어져 있어 중간을 고치면 안 된다).
@@ -40,8 +41,20 @@ const TOOL_LABELS: Record<string, string> = {
   search_facilities: "시설 검색",
   search_knowledge: "안내 문서 검색",
   list_my_alerts: "알림 확인",
+  get_review_links: "후기 링크 찾기",
   create_vacancy_alert: "빈자리 알림 등록",
 };
+
+type ReviewLinkView = { label: string; url: string };
+
+/** get_review_links 도구 결과(시설 이름·주소) → 버튼용 링크. 링크는 지도 화면과 같은 규칙으로 앱이 만든다 */
+function reviewLinksOf(p: Part): { facility: string; links: ReviewLinkView[] } | null {
+  const fr = p.functionResponse as { name?: string; response?: { facility?: unknown; address?: unknown } } | undefined;
+  if (fr?.name !== "get_review_links" || typeof fr.response?.facility !== "string" || !fr.response.facility) return null;
+  const name = fr.response.facility;
+  const address = typeof fr.response.address === "string" ? fr.response.address : "";
+  return { facility: name, links: reviewLinks({ name, address }) };
+}
 
 function load(): Msg[] {
   try {
@@ -160,9 +173,15 @@ export default function Agent() {
   };
 
   // 화면에 보이는 것: 사용자 질문, AI 의 글, 도구 사용 표시. 도구 결과·사고 내용은 숨긴다
-  type View = { key: string; kind: "user" | "assistant" | "tool"; text: string };
+  type View = { key: string; kind: "user" | "assistant" | "tool" | "links"; text: string; links?: ReviewLinkView[] };
   const view = messages.flatMap((m, i): View[] => {
     if (m.role === "user") {
+      // 후기 링크 도구의 결과는 버튼으로 바로 보여 준다 (AI 가 주소를 다시 쓰지 않게)
+      const linkViews = m.parts.flatMap((p, j): View[] => {
+        const links = reviewLinksOf(p);
+        return links ? [{ key: `l${i}-${j}`, kind: "links", text: links.facility, links: links.links }] : [];
+      });
+      if (linkViews.length) return linkViews;
       const text = m.parts.map((p) => p.text ?? "").join("").replace(CONTEXT_RE, "").trim();
       return text ? [{ key: `u${i}`, kind: "user", text }] : [];
     }
@@ -220,7 +239,24 @@ export default function Agent() {
           )}
 
           {view.map((v) =>
-            v.kind === "user" ? (
+            v.kind === "links" ? (
+              <div key={v.key} className="max-w-[92%] space-y-1.5 rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5">
+                <p className="text-xs font-semibold text-stone-700">{v.text} 후기·평판</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {v.links!.map((l) => (
+                    <a
+                      key={l.url}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full border border-emerald-600 px-3 py-1 text-xs font-medium text-emerald-700"
+                    >
+                      {l.label} ↗
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : v.kind === "user" ? (
               <div key={v.key} className="flex justify-end">
                 <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-emerald-600 px-3.5 py-2.5 text-sm text-white">{v.text}</p>
               </div>

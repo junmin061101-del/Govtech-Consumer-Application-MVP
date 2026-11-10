@@ -149,6 +149,7 @@ export const TOPICS = {
   hours: "운영 시간",
   cost: "비용·지원",
   alert: "빈자리 알림",
+  reviews: "후기·평판",
   other: "기타",
 } as const;
 export type Topic = keyof typeof TOPICS;
@@ -164,6 +165,7 @@ export function topicsOf(turn: Pick<Turn, "question" | "tools">): Topic[] {
   if (/시간|저녁|야간|아침|주말|토요일|일요일|연장|늦게|일찍/.test(q)) out.add("hours");
   if (/비용|요금|보육료|지원금|수당|무상|돈/.test(q)) out.add("cost");
   if (turn.tools.includes("create_vacancy_alert") || /알림/.test(q)) out.add("alert");
+  if (turn.tools.includes("get_review_links") || /후기|리뷰|평판|평가|분위기/.test(q)) out.add("reviews");
   if (out.size === 0) out.add("other");
   return [...out];
 }

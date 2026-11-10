@@ -9,15 +9,17 @@ import { findCombos } from "@/lib/combos";
 import { matchFacilities, walkMinToM } from "@/lib/filter";
 import { KIND_META, KIND_ORDER } from "@/lib/kinds";
 import { ageText, ageYears, currentMonths } from "@/lib/profile";
+import { reviewLinks } from "@/lib/reviewLinks";
 import { availability } from "@/lib/status";
 import type { Day, Facility, FacilityKind, Filters } from "@/lib/types";
 import { createAlert, describeTarget, listAlerts, type AlertTarget } from "./alerts";
 import { logDemandEvent } from "./events";
-import { facilitiesInBounds } from "./facilities";
+import { FACILITIES, facilitiesInBounds, facilityById } from "./facilities";
 import { GEMINI_MODEL, generate } from "./gemini";
 import { HttpError } from "./http";
 import { searchKnowledge } from "./knowledge";
 import { dongByCode, isKnownDong, regionsPayload } from "./regions";
+import { store } from "./store";
 import { getProfile } from "./users";
 
 /** 브라우저가 보내는 기록의 최대 크기. 넘으면 새 대화를 시작하게 한다 */
@@ -36,6 +38,7 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
   위치 우선순위: 부모가 말한 동네 > 메시지의 현재 위치(좌표가 있으면 lat/lng 로 정확히) > 프로필 관심 지역.
 - search_knowledge: 신청 방법·우선순위·필요 서류·신청 창구·구별 안내·CareOS 표시 기준을 큐레이션 문서에서 찾는다 (출처·기준일·경과일 포함).
 - list_my_alerts / create_vacancy_alert: 빈자리 알림 확인·등록.
+- get_review_links: 시설의 외부 후기·평판 원문 링크(네이버 블로그 후기·네이버 지도·카카오맵 검색 결과).
 
 최신 기준으로 답하기 (중요):
 - 오늘 날짜는 메시지 앞 대괄호 줄의 날짜다. '올해·지금·현재' 는 그 날짜 기준이다. 연도를 말할 때 학습 시점(예: 2024~2025년)을 기준으로 삼지 않는다.
@@ -50,6 +53,9 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
 - 아이 이름·생년월일·사진·연락처·상세 주소는 묻지도 적지도 않는다. 부모가 적으면 그 정보 없이 답한다. 좌표 숫자는 답에 적지 않는다.
 - 도구 결과에 없는 시설·숫자·설명을 지어내지 않는다. 시설 유형(국공립·직장·가정 등)별 이용 자격이나 규칙처럼 결과에 없는 일반 상식도 덧붙이지 않는다.
 - search_knowledge 결과를 옮길 때는 질문한 상황에 해당한다고 문서에 적힌 항목만 고른다 (예: 맞벌이 서류를 물으면 맞벌이에 해당하는 서류와 공통 서류만).
+- 후기·평판·리뷰·분위기를 물으면 get_review_links 를 부른다. 링크는 앱이 답 아래에 버튼으로 자동으로 보여 주므로 주소(URL)를
+  답에 다시 적지 않는다. "아래 버튼으로 네이버 블로그 후기·지도 리뷰를 볼 수 있어요" 정도로 한두 줄만 쓴다. 너는 후기 내용을 읽을 수
+  없으므로 후기를 요약하거나 평가(좋다·나쁘다·평점)를 지어내지 않는다. "블로그 후기는 개인 의견이고 협찬 글이 있을 수 있어요"라고 덧붙인다.
 - 결과가 없으면 범위를 넓히거나(도보 시간, 시간대, 시설 종류) 빈자리 알림을 제안한다.
 - 답은 한국어로, 모바일 화면에 맞게 짧게 쓴다. 시설은 이름·종류·거리·상태·운영 정보 위주로 3~5곳까지만 추린다.`;
 
@@ -108,6 +114,19 @@ export const TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "get_review_links",
+    description:
+      "시설의 외부 후기·평판 원문 링크(네이버 블로그 후기·네이버 지도·카카오맵 검색). search_facilities 결과의 id 를 주거나, 결과에 없는 시설이면 이름을 준다. 후기 내용은 돌려주지 않는다.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        facility_id: { type: "string", description: "search_facilities 결과의 id" },
+        name: { type: "string", description: "facility_id 가 없을 때 시설 이름 (예: 서울신구유치원)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "list_my_alerts",
     description: "회원이 받고 있는 빈자리 알림 목록 (최대 3개).",
     parametersJsonSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -142,6 +161,7 @@ export const TOOL_LABELS: Record<string, string> = {
   search_facilities: "시설 검색",
   search_knowledge: "안내 문서 검색",
   list_my_alerts: "알림 확인",
+  get_review_links: "후기 링크 찾기",
   create_vacancy_alert: "빈자리 알림 등록",
 };
 
@@ -285,6 +305,25 @@ export async function runTool(uid: string, name: string, input: ToolInput): Prom
       };
     }
 
+    case "get_review_links": {
+      const id = String(input.facility_id ?? "").slice(0, 120);
+      let f = id ? await facilityById(id) : null;
+      if (!f && input.name) {
+        // 이름만 주면 수집한 시설에서 같은 이름을 찾아, 하나뿐이면 그 주소(구)로 검색을 좁힌다
+        const same = await store().list<Facility & Record<string, unknown>>(FACILITIES, [["name", "==", String(input.name).trim().slice(0, 60)]]);
+        if (same.length === 1) f = same[0];
+      }
+      const name = (f?.name ?? String(input.name ?? "")).trim().slice(0, 60);
+      if (!name) return { error: "facility_id 또는 name 이 필요해요" };
+      // URL 은 모델에 주지 않는다 (모델이 긴 주소를 옮겨 적다 멈추는 일이 있었다). 앱이 이름·주소로 같은 링크를 만들어 버튼으로 보여 준다.
+      return {
+        facility: name,
+        address: f?.address ?? "",
+        buttons_shown: reviewLinks({ name, address: f?.address ?? "" }).map((l) => l.label),
+        note: "앱이 위 버튼들을 답 아래에 보여 준다. 주소(URL)는 적지 말고 한두 줄로 안내만 한다. 후기 내용은 CareOS 가 읽거나 저장하지 않는다.",
+      };
+    }
+
     case "list_my_alerts": {
       const list = await listAlerts(uid);
       return { alerts: list.map((a) => ({ id: a.id, target: describeTarget(a.target), expires_at: a.expires_at.slice(0, 10) })), max: 3 };
@@ -353,7 +392,8 @@ export async function agentStep(uid: string, history: Content[]): Promise<StepRe
     config: {
       systemInstruction: SYSTEM,
       tools: [{ functionDeclarations: TOOLS }],
-      maxOutputTokens: 8192,
+      // 모바일용 짧은 답. 상한을 낮게 둬 반복 생성이 시간 제한(45초)까지 가지 않게 한다
+      maxOutputTokens: 2048,
       // 채팅이라 생각 수준을 낮춘다 (기본 대비 약 2~3배 빠름, 2026-11 측정). MINIMAL 은 이 모델에서 지원하지 않는다
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       // Hosting 리라이트 60초 안에 오류 안내까지 돌아오도록 한 번의 호출을 45초로 자른다

@@ -63,7 +63,8 @@ export async function handle(fn: () => Promise<Response>): Promise<Response> {
     return await fn();
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, { status: e.status });
-    console.error(e);
+    // Error 객체를 그대로 넘기면 Cloud Logging 에 빈 값으로 남는다
+    console.error(e instanceof Error ? (e.stack ?? e.message) : String(e));
     return json({ error: "잠시 후 다시 시도해 주세요" }, { status: 500 });
   }
 }

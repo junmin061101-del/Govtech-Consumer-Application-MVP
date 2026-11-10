@@ -1,6 +1,9 @@
 import { AGES, type Facility } from "./types";
 
-/** 열린데이터광장 ChildCareInfoDJ 의 row 중 사용하는 필드 */
+/**
+ * 열린데이터광장 구별 어린이집 정보(표준 데이터) row 중 사용하는 필드.
+ * 필드명은 원천인 보육정보공개 API(cpmsapi030, 서비스명세서 v1.7, 2026-04)와 같다(대문자).
+ */
 export interface RawRow {
   STCODE?: string;
   CRNAME?: string;
@@ -22,8 +25,21 @@ export interface RawRow {
   CLASS_CNT_03?: number;
   CLASS_CNT_04?: number;
   CLASS_CNT_05?: number;
+  /** 영아혼합(만 0~2세) */
   CLASS_CNT_M2?: number;
+  /** 영유아혼합(만 2~3세). 명세 v1.7 에서 추가 */
+  CLASS_CNT_M3?: number;
+  /** 유아혼합(만 3~5세) */
   CLASS_CNT_M5?: number;
+  /** 보육교직원수 */
+  CHCRTESCNT?: string | number;
+  /** 연령별 입소대기 아동수 (명세 v1.6 에서 추가) */
+  EW_CNT_00?: string | number;
+  EW_CNT_01?: string | number;
+  EW_CNT_02?: string | number;
+  EW_CNT_03?: string | number;
+  EW_CNT_04?: string | number;
+  EW_CNT_05?: string | number;
 }
 
 export type HoursOverrides = Record<string, Facility["extended"]>;
@@ -33,13 +49,16 @@ const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// 동작구 대략 범위. 좌표가 비었거나 엉뚱한 시설을 지도에서 제외하기 위한 방어선.
-const inDongjak = (lat: number, lng: number) =>
-  lat > 37.45 && lat < 37.53 && lng > 126.9 && lng < 127.0;
+// 좌표가 비었거나 0 인 행을 거르는 최소 방어선(대한민국 대략 범위).
+// 어느 행정동에 속하는지는 수집 단계에서 서버가 경계 데이터로 판정한다(lib/server/regions.ts).
+const plausible = (lat: number, lng: number) => lat > 33 && lat < 39 && lng > 124 && lng < 132;
+
+/** 숫자 필드가 비어 있으면 null (0 과 구분) */
+const numOrNull = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
 /**
  * 연령별 반 개설 여부.
- * M2/M5 는 혼합반이며 각각 만 0~2세, 만 3~5세를 포함한다고 가정한다(보수적 해석).
+ * 혼합반은 명세의 연령 범위를 따른다: M2 만 0~2세, M3 만 2~3세, M5 만 3~5세.
  * 어린이집은 만 5세까지라 6~8세는 항상 false.
  */
 function ageOpen(row: RawRow): boolean[] {
@@ -52,8 +71,9 @@ function ageOpen(row: RawRow): boolean[] {
     row.CLASS_CNT_05,
   ].map(num);
   const m2 = num(row.CLASS_CNT_M2) > 0;
+  const m3 = num(row.CLASS_CNT_M3) > 0;
   const m5 = num(row.CLASS_CNT_M5) > 0;
-  const open = cls.map((c, age) => c > 0 || (age <= 2 ? m2 : m5));
+  const open = cls.map((c, age) => c > 0 || (age <= 2 && m2) || ((age === 2 || age === 3) && m3) || (age >= 3 && m5));
   return AGES.map((age) => open[age] ?? false);
 }
 
@@ -72,12 +92,18 @@ function extendedFromSpec(spec: string | undefined): Facility["extended"] {
   return out;
 }
 
+/** 만 0~5세 입소대기 아동수. 원천에 필드가 없으면 null */
+function waitlist(row: RawRow): number[] | null {
+  const v = [row.EW_CNT_00, row.EW_CNT_01, row.EW_CNT_02, row.EW_CNT_03, row.EW_CNT_04, row.EW_CNT_05].map(numOrNull);
+  return v.every((x) => x === null) ? null : v.map((x) => x ?? 0);
+}
+
 export function normalizeRow(row: RawRow, overrides: HoursOverrides = {}): Facility | null {
   // 운영 중인 시설만: 정상, 휴지 후 재개. 휴지·폐지는 제외
   if (row.CRSTATUSNAME !== "정상" && row.CRSTATUSNAME !== "재개") return null;
   const lat = num(row.LA);
   const lng = num(row.LO);
-  if (!row.STCODE || !row.CRNAME || !inDongjak(lat, lng)) return null;
+  if (!row.STCODE || !row.CRNAME || !plausible(lat, lng)) return null;
 
   const capacity = num(row.CRCAPAT);
   const enrolled = num(row.CRCHCNT);
@@ -100,6 +126,9 @@ export function normalizeRow(row: RawRow, overrides: HoursOverrides = {}): Facil
     // 수동 보강 데이터가 있으면 API 값보다 우선
     extended: { ...extendedFromSpec(row.CRSPEC), ...overrides[row.STCODE] },
     asOf: row.DATASTDRDT ?? "",
+    staff: numOrNull(row.CHCRTESCNT),
+    waitlist: waitlist(row),
+    source: "seoul-childcare",
   };
 }
 

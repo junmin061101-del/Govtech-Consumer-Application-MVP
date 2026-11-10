@@ -4,3 +4,11 @@ node_modules
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+.data
+firestore-debug.log
+ui-debug.log
+firebase-debug.log
+.firebase
+out
+functions/.secret.local
+functions/.env.local

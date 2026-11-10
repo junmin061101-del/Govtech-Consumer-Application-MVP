@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "careos-dev-1103174",
+    "dev": "careos-dev-1103174",
+    "prod": "careos-prod"
+  }
+}

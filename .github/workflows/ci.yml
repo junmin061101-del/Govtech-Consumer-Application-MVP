@@ -1,0 +1,26 @@
+# 모든 PR·main 푸시: 타입체크 → 단위·API 테스트 → 에뮬레이터 테스트(규칙·저장소·Functions E2E) → 정적 빌드·번들 검사
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm ci --prefix functions
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:emulator
+      - run: npm run test:stack
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: demo-careos
+      - run: node scripts/check-bundle.mjs out

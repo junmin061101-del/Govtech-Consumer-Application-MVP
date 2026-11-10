@@ -1,0 +1,46 @@
+# PR: dev 프로젝트에 Hosting 미리보기 채널을 만들고 PR 에 링크를 남긴다 (Functions 는 dev 에 배포된 것을 쓴다).
+# 필요한 설정 (GitHub > Settings > Environments > dev):
+#   vars: FIREBASE_PROJECT_ID, FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_APP_ID, FIREBASE_MEASUREMENT_ID,
+#         KAKAO_MAP_KEY, RECAPTCHA_ENTERPRISE_KEY, GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+name: preview
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ vars.FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ vars.FIREBASE_MEASUREMENT_ID }}
+          NEXT_PUBLIC_KAKAO_MAP_KEY: ${{ vars.KAKAO_MAP_KEY }}
+          NEXT_PUBLIC_RECAPTCHA_ENTERPRISE_KEY: ${{ vars.RECAPTCHA_ENTERPRISE_KEY }}
+      - run: node scripts/check-bundle.mjs out
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Deploy preview channel
+        id: deploy
+        run: |
+          npx firebase hosting:channel:deploy "pr-${{ github.event.number }}" --project dev --expires 7d --json > deploy.json
+          echo "url=$(node -e 'const r=require("./deploy.json").result; console.log(Object.values(r)[0].url)')" >> "$GITHUB_OUTPUT"
+      - name: Comment preview URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "${{ github.event.number }}" --edit-last --create-if-none --body "미리보기 (dev, 7일): ${{ steps.deploy.outputs.url }}"

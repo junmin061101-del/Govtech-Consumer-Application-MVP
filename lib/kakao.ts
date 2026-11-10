@@ -35,7 +35,7 @@ export interface PlaceHit {
   lng: number;
 }
 
-/** 동작구 중심 반경 6km 안에서 키워드 검색 */
+/** 기준점(지도 중심) 반경 6km 안에서 키워드 검색 */
 export async function searchPlaces(query: string, center: { lat: number; lng: number }): Promise<PlaceHit[]> {
   const kakao = await loadKakao();
   return new Promise((resolve) => {

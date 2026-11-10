@@ -3,10 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { KIND_META } from "./kinds";
 import { loadKakao, type Kakao } from "./kakao";
-import { AGES, type Facility, type FacilityKind } from "./types";
-
-// 카카오 검색은 쿼리당 최대 45건이라 동작구 법정동별로 나눠 검색한다.
-const DONGS = ["노량진동", "상도동", "본동", "흑석동", "동작동", "사당동", "대방동", "신대방동"];
+import { AGES, type Bounds, type Facility, type FacilityKind } from "./types";
 
 // name: 시설 이름 패턴, category: 카카오 카테고리 패턴(애견유치원 같은 동명 업종을 걸러낸다)
 const SEARCHES: {
@@ -15,32 +12,31 @@ const SEARCHES: {
   keyword: string;
   name: RegExp;
   category: RegExp;
-  perDong: boolean;
 }[] = [
-  { kind: "kindergarten", type: "유치원", keyword: "유치원", name: /유치원/, category: /유아교육/, perDong: true },
+  { kind: "kindergarten", type: "유치원", keyword: "유치원", name: /유치원/, category: /유아교육/ },
   {
     kind: "localcenter",
     type: "지역아동센터",
     keyword: "지역아동센터",
     name: /지역아동|아동복지센터|아동센터/,
     category: /사회복지시설/,
-    perDong: true,
   },
-  { kind: "togethercare", type: "다함께돌봄센터", keyword: "다함께돌봄센터", name: /다함께돌봄/, category: /사회복지시설|아동/, perDong: false },
+  { kind: "togethercare", type: "다함께돌봄센터", keyword: "다함께돌봄센터", name: /다함께돌봄/, category: /사회복지시설|아동/ },
+  { kind: "kiumcenter", type: "우리동네키움센터", keyword: "키움센터", name: /키움센터/, category: /사회복지시설|아동/ },
 ];
 
 // 이름에 휴원·폐업이 표시된 곳은 지도에서 뺀다
 const CLOSED = /휴원|폐원|폐업|휴업|폐쇄/;
 
-const CACHE_KEY = "careos:extras:v1";
+const CACHE_PREFIX = "careos:extras:v2:";
 
 function ageOpenFor(kind: FacilityKind): boolean[] {
   const [lo, hi] = KIND_META[kind].ages;
   return AGES.map((a) => a >= lo && a <= hi);
 }
 
-/** 한 검색어의 결과를 마지막 페이지까지(최대 3쪽) 모은다. */
-function searchAllPages(kakao: Kakao, ps: any, query: string): Promise<any[]> {
+/** 한 검색어의 결과를 마지막 페이지까지(최대 3쪽) 모은다. bounds 로 화면 영역 안만 찾는다. */
+function searchAllPages(kakao: Kakao, ps: any, query: string, bounds: any): Promise<any[]> {
   return new Promise((resolve) => {
     const acc: any[] = [];
     const go = (page: number) => {
@@ -52,44 +48,52 @@ function searchAllPages(kakao: Kakao, ps: any, query: string): Promise<any[]> {
           if (pagination.current < pagination.last && page < 3) go(page + 1);
           else resolve(acc);
         },
-        { page, size: 15 },
+        { page, size: 15, bounds },
       );
     };
     go(1);
   });
 }
 
-function readCache(): Facility[] | null {
+function readCache(key: string): Facility[] | null {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = sessionStorage.getItem(CACHE_PREFIX + key);
     return raw ? (JSON.parse(raw) as Facility[]) : null;
   } catch {
     return null;
   }
 }
 
-function writeCache(list: Facility[]) {
+function writeCache(key: string, list: Facility[]) {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(list));
+    sessionStorage.setItem(CACHE_PREFIX + key, JSON.stringify(list));
   } catch {
     /* 저장소를 못 쓰는 환경이면 캐시 없이 동작 */
   }
 }
 
-export async function loadExtraFacilities(): Promise<Facility[]> {
-  const cached = readCache();
+/**
+ * 화면 영역 안 유치원·센터를 카카오 장소 검색으로 찾는다.
+ * 영역을 약 1km 격자로 맞춰 캐시 키로 쓰므로 지도를 조금 움직여도 다시 검색하지 않는다.
+ */
+export async function loadExtraFacilities(b: Bounds): Promise<Facility[]> {
+  const r = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+  const key = [b.swLat, b.swLng, b.neLat, b.neLng].map(r).join(",");
+  const cached = readCache(key);
   if (cached) return cached;
 
   const kakao = await loadKakao();
   const ps = new kakao.maps.services.Places();
+  const bounds = new kakao.maps.LatLngBounds(
+    new kakao.maps.LatLng(b.swLat, b.swLng),
+    new kakao.maps.LatLng(b.neLat, b.neLng),
+  );
   const found = new Map<string, Facility>();
 
-  for (const s of SEARCHES) {
-    const queries = s.perDong ? DONGS.map((d) => `${d} ${s.keyword}`) : [`동작구 ${s.keyword}`];
-    const results = await Promise.all(queries.map((q) => searchAllPages(kakao, ps, q)));
-
-    for (const d of results.flat()) {
-      if (!/동작구/.test(d.address_name) || !s.name.test(d.place_name)) continue;
+  const results = await Promise.all(SEARCHES.map((s) => searchAllPages(kakao, ps, s.keyword, bounds)));
+  SEARCHES.forEach((s, i) => {
+    for (const d of results[i]) {
+      if (!s.name.test(d.place_name)) continue;
       if (!s.category.test(d.category_name ?? "") || CLOSED.test(d.place_name)) continue;
       const id = `kakao:${d.id}`;
       if (found.has(id)) continue;
@@ -110,11 +114,19 @@ export async function loadExtraFacilities(): Promise<Facility[]> {
         extended: {},
         asOf: "",
         detailUrl: d.place_url,
+        source: "kakao-places",
       });
     }
-  }
+  });
 
   const list = [...found.values()];
-  writeCache(list);
+  writeCache(key, list);
   return list;
+}
+
+/** 공공데이터로 이미 받은 같은 종류 시설(약 60m 안)과 겹치는 카카오 검색 결과는 뺀다 */
+export function dropDuplicates(extras: Facility[], known: Iterable<Facility>): Facility[] {
+  const official = [...known].filter((f) => f.source !== "kakao-places");
+  const near = (a: Facility, b: Facility) => Math.abs(a.lat - b.lat) < 0.00055 && Math.abs(a.lng - b.lng) < 0.0007;
+  return extras.filter((e) => !official.some((o) => o.kind === e.kind && near(o, e)));
 }

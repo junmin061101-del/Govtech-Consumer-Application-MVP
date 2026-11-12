@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import AgentChat from "./AgentChat";
+import { OPEN_PIP_EVENT } from "./IsarangGuideCard";
 
 const POS_KEY = "careos:fab:v1";
 const SIZE = 56;
@@ -59,6 +60,13 @@ export default function FloatingAgent({ hidden = false }: { hidden?: boolean }) 
     setPos(loadPos());
   }, []);
 
+  // 아이사랑 '같이 하기' 카드의 '상담 창 작게 띄우기' (버튼 클릭 안에서 보내므로 팝업이 막히지 않는다)
+  useEffect(() => {
+    const onOpen = () => void openPipRef.current();
+    window.addEventListener(OPEN_PIP_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_PIP_EVENT, onOpen);
+  }, []);
+
   // 작은 창이 열려 있으면 시트는 닫는다. 페이지를 떠나면 작은 창도 닫는다
   useEffect(() => () => pip?.close(), [pip]);
 
@@ -96,7 +104,12 @@ export default function FloatingAgent({ hidden = false }: { hidden?: boolean }) 
     else setOpen((o) => !o);
   };
 
+  const openPipRef = useRef<() => Promise<void>>(async () => {});
   const openPip = async () => {
+    if (pip) {
+      pip.focus();
+      return;
+    }
     try {
       const w: Window = await pipApi().requestWindow({ width: 400, height: 640 });
       copyStyles(w.document);
@@ -113,6 +126,7 @@ export default function FloatingAgent({ hidden = false }: { hidden?: boolean }) 
     }
   };
 
+  openPipRef.current = openPip;
   const btn = "shrink-0 rounded-full border border-stone-300 px-2.5 py-1 text-xs text-stone-600";
   const style = pos ? { left: pos.x, top: pos.y } : undefined;
 

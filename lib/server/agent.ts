@@ -9,6 +9,7 @@ import { findCombos } from "@/lib/combos";
 import { matchFacilities, walkMinToM } from "@/lib/filter";
 import { KIND_META, KIND_ORDER } from "@/lib/kinds";
 import { ageText, ageYears, currentMonths } from "@/lib/profile";
+import { isarangGuide } from "@/lib/isarang";
 import { reviewLinks } from "@/lib/reviewLinks";
 import { availability } from "@/lib/status";
 import type { Day, Facility, FacilityKind, Filters } from "@/lib/types";
@@ -25,6 +26,10 @@ import { getProfile } from "./users";
 /** 브라우저가 보내는 기록의 최대 크기. 넘으면 새 대화를 시작하게 한다 */
 export const MAX_HISTORY_BYTES = 400_000;
 export const MAX_MESSAGES = 80;
+/** 부모가 보낸 화면 캡처 (아이사랑 등). 대화당 장수와 장당 크기(base64 글자 수) 제한 */
+export const MAX_IMAGES = 3;
+export const MAX_IMAGE_B64 = 700_000;
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 // 대화 내내 바뀌지 않아야 한다 (바뀌면 이전 사고 블록이 무효가 된다). 날짜·회원 정보는 도구로 읽게 한다.
 export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세 아이를 둔 서울의 부모가 "내 시간에 실제로 갈 수 있는 돌봄"을 찾고, 신청하는 방법을 알도록 돕는다.
@@ -39,6 +44,8 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
 - search_knowledge: 신청 방법·우선순위·필요 서류·신청 창구·구별 안내·CareOS 표시 기준을 큐레이션 문서에서 찾는다 (출처·기준일·경과일 포함).
 - list_my_alerts / create_vacancy_alert: 빈자리 알림 확인·등록.
 - get_review_links: 시설의 외부 후기·평판 원문 링크(네이버 블로그 후기·네이버 지도·카카오맵 검색 결과).
+- isarang_guide: 아이사랑(임신육아종합포털)에서 등록대기 신청·신청현황 확인·아동등록 같은 일을 부모가 직접 할 때, 해당 메뉴로 바로 가는
+  버튼과 단계 체크리스트 카드를 보여 준다. 부모는 아이사랑을 열어 두고 이 상담 창(작게 띄우기)을 옆에 둔 채 진행한다.
 - draft_email: 아이가 다니는(또는 다닐) 시설에 보낼 메일 초안. 앱이 편집 가능한 메일 카드로 보여 주고, 부모가 고친 뒤 직접 보낸다.
 
 최신 기준으로 답하기 (중요):
@@ -58,6 +65,11 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
   답에 다시 적지 않는다. "아래 버튼으로 네이버 블로그 글·지도 리뷰를 볼 수 있어요" 정도로 한두 줄만 쓴다. 블로그 글 내용은 앱이 화면에만 보여 주고
   너에게는 주지 않는다(네이버 약관). 너는 후기 내용을 읽을 수
   없으므로 후기를 요약하거나 평가(좋다·나쁘다·평점)를 지어내지 않는다. "블로그 후기는 개인 의견이고 협찬 글이 있을 수 있어요"라고 덧붙인다.
+- 아이사랑에서 신청·현황 확인·아동등록을 하려 하거나 막혔다고 하면 isarang_guide 를 부른다. 너는 아이사랑에 로그인하거나 대신 신청할 수
+  없다(부모가 직접 로그인·간편인증·신청 버튼을 누른다). 아이디·비밀번호·인증번호는 절대 묻지 말고, 부모가 적으면 지우라고 안내한다.
+- 부모가 화면 캡처(이미지)를 보내면 그 화면에 실제로 보이는 메뉴·버튼·문구만 근거로 다음에 누를 곳을 한두 단계씩 알려 준다.
+  화면에 없는 메뉴를 지어내지 않는다. 캡처에 보이는 아이 이름·주민등록번호·주소·연락처는 답에 옮겨 적지 않는다.
+  오류 문구가 보이면 그대로 짧게 인용하고 해결 방법을 안내하되, 모르면 아이사랑 헬프데스크(1566-3232)로 안내한다.
 - 시설에 메일을 쓰고 싶다고 하면 draft_email 을 부른다. 결석·조퇴·상담 요청·문의 등 목적에 맞게 정중한 한국어로 짧게 쓴다.
   아이 이름·보호자 이름·연락처·반 이름은 묻지도 쓰지도 말고 [아이 이름] [보호자 이름] [연락처] [반 이름] 빈칸으로 남긴다
   (부모가 카드에서 직접 채운다). 날짜·사유처럼 부모가 말한 내용만 넣고, 모르는 내용은 지어내지 않는다.
@@ -133,6 +145,20 @@ export const TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "isarang_guide",
+    description:
+      "아이사랑에서 부모가 직접 할 일(등록대기 신청·신청현황 확인·아동등록·로그인)을 고르면, 해당 메뉴 바로가기와 단계 체크리스트 카드를 보여 준다.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        task: { type: "string", enum: ["apply", "status", "register_child", "login"], description: "apply=등록대기 신청, status=신청현황 확인, register_child=등록대기 아동등록, login=로그인" },
+        facility_name: { type: "string", description: "신청하려는 시설 이름 (있으면)" },
+      },
+      required: ["task"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "draft_email",
     description:
       "시설(어린이집 등)에 보낼 메일 초안을 만든다. 앱이 편집 카드로 보여 주고 부모가 직접 보낸다. 개인정보는 [아이 이름] 등 빈칸으로 둔다.",
@@ -184,6 +210,7 @@ export const TOOL_LABELS: Record<string, string> = {
   list_my_alerts: "알림 확인",
   get_review_links: "후기 링크 찾기",
   draft_email: "메일 초안 쓰기",
+  isarang_guide: "아이사랑 안내 준비",
   create_vacancy_alert: "빈자리 알림 등록",
 };
 
@@ -327,6 +354,12 @@ export async function runTool(uid: string, name: string, input: ToolInput): Prom
       };
     }
 
+    case "isarang_guide": {
+      const g = isarangGuide(String(input.task ?? ""), String(input.facility_name ?? "").trim().slice(0, 60) || null);
+      if (!g) return { error: "task 는 apply·status·register_child·login 중 하나예요" };
+      return { ...g, note: "앱이 바로가기 버튼과 체크리스트 카드를 보여 줬다. 링크를 다시 적지 말고, 막히면 화면 캡처(📷)를 보내 달라고 안내한다." };
+    }
+
     case "draft_email": {
       const facility = String(input.facility_name ?? "").trim().slice(0, 60);
       if (!facility || !String(input.subject ?? "").trim() || !String(input.body ?? "").trim()) return { error: "facility_name·subject·body 가 필요해요" };
@@ -390,12 +423,25 @@ export async function runTool(uid: string, name: string, input: ToolInput): Prom
 /** 브라우저가 보낸 기록의 기본 모양만 확인한다 (내용은 Gemini 의 맥락으로만 쓰인다) */
 export function validateHistory(contents: unknown): Content[] {
   if (!Array.isArray(contents) || contents.length === 0) throw new HttpError(400, "대화 기록이 올바르지 않아요");
-  if (contents.length > MAX_MESSAGES || JSON.stringify(contents).length > MAX_HISTORY_BYTES) {
+  // 글자 기록 크기는 이미지 데이터를 빼고 잰다
+  const textBytes = JSON.stringify(contents, (k, v) => (k === "data" && typeof v === "string" ? "" : v)).length;
+  if (contents.length > MAX_MESSAGES || textBytes > MAX_HISTORY_BYTES) {
     throw new HttpError(413, "대화가 너무 길어졌어요. 새 대화를 시작해 주세요");
   }
+  let images = 0;
   for (const c of contents) {
     if (!c || (c.role !== "user" && c.role !== "model") || !Array.isArray(c.parts) || c.parts.length === 0) {
       throw new HttpError(400, "대화 기록이 올바르지 않아요");
+    }
+    for (const p of c.parts) {
+      const img = p?.inlineData;
+      if (!img) continue;
+      // 이미지는 부모가 보낸 것(user)만, 정해진 형식·크기만
+      if (c.role !== "user" || !IMAGE_TYPES.has(img.mimeType) || typeof img.data !== "string" || !/^[A-Za-z0-9+/=]+$/.test(img.data)) {
+        throw new HttpError(400, "보낸 이미지 형식이 올바르지 않아요");
+      }
+      if (img.data.length > MAX_IMAGE_B64) throw new HttpError(413, "이미지가 너무 커요");
+      if (++images > MAX_IMAGES) throw new HttpError(413, `화면 캡처는 대화당 ${MAX_IMAGES}장까지예요. 새 대화를 시작해 주세요`);
     }
   }
   if (contents[0].role !== "user" || contents[contents.length - 1].role !== "user") throw new HttpError(400, "대화 기록이 올바르지 않아요");

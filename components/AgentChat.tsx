@@ -7,6 +7,8 @@ import { api } from "@/lib/ui";
 import { reviewLinks } from "@/lib/reviewLinks";
 import BlogPosts from "@/components/BlogPosts";
 import EmailCompose from "@/components/EmailCompose";
+import IsarangGuideCard from "@/components/IsarangGuideCard";
+import { canCaptureScreen, shotFromFile, shotFromScreen, type Shot } from "@/lib/capture";
 import { useSpeechInput } from "@/components/useSpeechInput";
 import type { ReactNode } from "react";
 
@@ -14,9 +16,17 @@ import type { ReactNode } from "react";
 // 기록은 덧붙이기만 한다 (Gemini 응답의 thoughtSignature 가 앞선 대화와 이어져 있어 중간을 고치면 안 된다).
 const STORE_KEY = "careos:agent:v2";
 const MAX_STEPS = 8;
+/** 서버(lib/server/agent.ts MAX_IMAGES)와 같은 값 */
+const MAX_SHOTS = 3;
 
 // Gemini 대화 형식 (role: user | model, parts)
-type Part = { text?: string; functionCall?: { name?: string; args?: Record<string, unknown> }; functionResponse?: unknown; [k: string]: unknown };
+type Part = {
+  text?: string;
+  functionCall?: { name?: string; args?: Record<string, unknown> };
+  functionResponse?: unknown;
+  inlineData?: { mimeType: string; data: string };
+  [k: string]: unknown;
+};
 type Msg = { role: "user" | "model"; parts: Part[] };
 
 const SUGGESTIONS = [
@@ -24,7 +34,7 @@ const SUGGESTIONS = [
   "지금 자리 있는 어린이집 알려줘",
   "어린이집 입소 신청 방법이랑 필요한 서류 알려줘",
   "토요일에 아이 맡길 곳이 있을까?",
-  "아이사랑에서 입소대기 신청하다 막혔어. 순서 알려줘",
+  "아이사랑 등록대기 신청 같이 해줘",
 ];
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
@@ -48,6 +58,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_my_alerts: "알림 확인",
   get_review_links: "후기 링크 찾기",
   draft_email: "메일 초안 쓰기",
+  isarang_guide: "아이사랑 안내 준비",
   create_vacancy_alert: "빈자리 알림 등록",
 };
 
@@ -134,6 +145,9 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [shot, setShot] = useState<Shot | null>(null);
+  const [camMenu, setCamMenu] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   // 현재 위치 (지도 화면과 같은 설정을 쓴다)
@@ -167,12 +181,32 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   if (loading) return null;
   if (!flags.agent) return <p className="p-6 text-center text-sm text-stone-500">아직 열리지 않은 기능이에요.</p>;
 
+  const shotsUsed = messages.reduce((n, m) => n + m.parts.filter((p) => p.inlineData).length, 0);
+  const capture = async (from: "screen" | "file", file?: File) => {
+    setError(null);
+    if (shotsUsed >= MAX_SHOTS) {
+      setError(`화면 캡처는 대화당 ${MAX_SHOTS}장까지예요. '새 대화'로 이어서 물어봐 주세요.`);
+      return;
+    }
+    try {
+      setShot(from === "screen" ? await shotFromScreen() : await shotFromFile(file!));
+    } catch (e) {
+      const name = (e as Error)?.name;
+      if (name !== "NotAllowedError" && name !== "AbortError") setError((e as Error).message || "캡처하지 못했어요");
+    }
+  };
+  // 카드의 '막히면 화면 보내기': 컴퓨터는 화면 공유로 바로 찍고, 휴대폰은 사진(캡처) 고르기
+  const startCapture = () => (canCaptureScreen() ? void capture("screen") : fileRef.current?.click());
+
   const send = async (text: string) => {
-    const q = text.trim();
+    const q = text.trim() || (shot ? "이 화면에서 다음에 뭘 하면 돼?" : "");
     if (!q || busy) return;
     setError(null);
     setInput("");
-    let history: Msg[] = [...messages, { role: "user", parts: [{ text: `${contextLine(here)}\n${q}` }] }];
+    const parts: Part[] = [{ text: `${contextLine(here)}\n${q}` }];
+    if (shot) parts.push({ inlineData: { mimeType: shot.mimeType, data: shot.data } });
+    setShot(null);
+    let history: Msg[] = [...messages, { role: "user", parts }];
     setMessages(history);
     save(history, id);
     setBusy("생각하는 중…");
@@ -207,8 +241,10 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   // 화면에 보이는 것: 사용자 질문, AI 의 글, 도구 사용 표시. 도구 결과·사고 내용은 숨긴다
   type View = {
     key: string;
-    kind: "user" | "assistant" | "tool" | "links" | "email";
+    kind: "user" | "assistant" | "tool" | "links" | "email" | "isarang";
     text: string;
+    image?: string;
+    task?: string;
     links?: ReviewLinkView[];
     address?: string;
     email?: { subject: string; body: string };
@@ -222,14 +258,24 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
       });
       if (linkViews.length) return linkViews;
       const text = m.parts.map((p) => p.text ?? "").join("").replace(CONTEXT_RE, "").trim();
-      return text ? [{ key: `u${i}`, kind: "user", text }] : [];
+      const img = m.parts.find((p) => p.inlineData)?.inlineData;
+      return text || img ? [{ key: `u${i}`, kind: "user", text, image: img ? `data:${img.mimeType};base64,${img.data}` : undefined }] : [];
     }
     return m.parts.flatMap((p, j): View[] =>
       p.thought
         ? []
         : p.text?.trim()
           ? [{ key: `a${i}-${j}`, kind: "assistant", text: p.text }]
-          : p.functionCall?.name === "draft_email"
+          : p.functionCall?.name === "isarang_guide"
+            ? [
+                {
+                  key: `g${i}-${j}`,
+                  kind: "isarang",
+                  text: String(p.functionCall.args?.facility_name ?? "").slice(0, 60),
+                  task: String(p.functionCall.args?.task ?? ""),
+                },
+              ]
+            : p.functionCall?.name === "draft_email"
             ? [
                 {
                   key: `e${i}-${j}`,
@@ -288,7 +334,9 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
           )}
 
           {view.map((v) =>
-            v.kind === "email" ? (
+            v.kind === "isarang" ? (
+              <IsarangGuideCard key={v.key} task={v.task!} facility={v.text || null} onCapture={startCapture} />
+            ) : v.kind === "email" ? (
               <EmailCompose key={v.key} facility={v.text} subject={v.email!.subject} body={v.email!.body} />
             ) : v.kind === "links" ? (
               <div key={v.key} className="max-w-[92%] space-y-1.5 rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5">
@@ -310,8 +358,14 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
                 <BlogPosts name={v.text} address={v.address} />
               </div>
             ) : v.kind === "user" ? (
-              <div key={v.key} className="flex justify-end">
-                <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-emerald-600 px-3.5 py-2.5 text-sm text-white">{v.text}</p>
+              <div key={v.key} className="flex flex-col items-end gap-1">
+                {v.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={v.image} alt="보낸 화면 캡처" className="max-h-48 max-w-[70%] rounded-xl border border-stone-200 object-contain" />
+                )}
+                {v.text && (
+                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-emerald-600 px-3.5 py-2.5 text-sm text-white">{v.text}</p>
+                )}
               </div>
             ) : v.kind === "tool" ? (
               <p key={v.key} className="text-xs text-stone-400">
@@ -331,6 +385,30 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
       </div>
 
       <div className="border-t border-stone-200 bg-white">
+        {shot && (
+          <div className="mx-auto flex max-w-2xl items-start gap-2 px-4 pt-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={shot.preview} alt="보낼 화면 캡처" className="h-20 w-auto rounded-lg border border-stone-200" />
+            <p className="flex-1 text-[11px] leading-snug text-amber-800">
+              주민등록번호·아이 이름 같은 개인정보가 보이면 &lsquo;빼기&rsquo; 후 그 부분을 가려서 다시 찍어 주세요. 이 이미지는 답을 만들 때
+              Google Gemini 로 보내고 서버에 저장하지 않아요.
+            </p>
+            <button type="button" onClick={() => setShot(null)} className="shrink-0 text-xs text-stone-500 underline">
+              빼기
+            </button>
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void capture("file", f);
+          }}
+        />
         <form
           className="mx-auto flex max-w-2xl gap-2 px-4 py-3"
           onSubmit={(e) => {
@@ -352,6 +430,43 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
               🎤
             </button>
           )}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => (canCaptureScreen() ? setCamMenu((v) => !v) : fileRef.current?.click())}
+              disabled={Boolean(busy)}
+              aria-label="화면 캡처·사진 보내기"
+              aria-expanded={camMenu}
+              className="h-full rounded-full border border-stone-300 px-3 text-base text-stone-600 disabled:opacity-50"
+            >
+              📷
+            </button>
+            {camMenu && (
+              <div className="absolute bottom-full left-0 z-20 mb-2 w-48 overflow-hidden rounded-xl border border-stone-200 bg-white text-xs shadow-lg">
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2.5 text-left hover:bg-stone-50"
+                  onClick={() => {
+                    setCamMenu(false);
+                    void capture("screen");
+                  }}
+                >
+                  🖥️ 다른 탭 화면 캡처
+                  <span className="block text-[10px] text-stone-400">공유 창에서 아이사랑 탭을 고르면 한 장만 찍어요</span>
+                </button>
+                <button
+                  type="button"
+                  className="block w-full border-t border-stone-100 px-3 py-2.5 text-left hover:bg-stone-50"
+                  onClick={() => {
+                    setCamMenu(false);
+                    fileRef.current?.click();
+                  }}
+                >
+                  🖼️ 사진·캡처 파일 고르기
+                </button>
+              </div>
+            )}
+          </div>
           <input
             className="w-full rounded-full border border-stone-300 px-4 py-2.5 text-sm outline-none focus:border-emerald-600"
             placeholder={speech.listening ? "듣고 있어요… 말을 마치면 바로 보내요" : "예: 상도동에서 평일 7시~21시 만 3세"}
@@ -360,7 +475,7 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
             onChange={(e) => setInput(e.target.value)}
             disabled={Boolean(busy)}
           />
-          <button className="shrink-0 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-50" disabled={Boolean(busy) || !input.trim()}>
+          <button className="shrink-0 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-50" disabled={Boolean(busy) || (!input.trim() && !shot)}>
             보내기
           </button>
         </form>

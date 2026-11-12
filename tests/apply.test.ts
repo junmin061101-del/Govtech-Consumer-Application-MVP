@@ -14,7 +14,7 @@ describe("안내 문서 (AI 상담 검색 원천)", () => {
       const ids = new Set(g.priorities.map((p) => p.id));
       expect(g.documents.flatMap((d) => d.when).every((w) => ids.has(w)), id).toBe(true);
     }
-    expect(loadGuide("daycare")!.channels[0].url).toBe("https://www.childcare.go.kr");
+    expect(loadGuide("daycare")!.channels[0].url).toBe("https://www.childcare.go.kr/?menuno=175");
   });
 
   it("고른 우선순위에 해당하는 서류만 더한다", () => {

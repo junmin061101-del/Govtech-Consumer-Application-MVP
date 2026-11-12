@@ -11,8 +11,59 @@ import Reviews from "./Reviews";
 import BlogPosts from "./BlogPosts";
 import { reviewLinks } from "@/lib/reviewLinks";
 
-const fmtDist = (m: number | null) =>
-  m === null ? null : m < 1000 ? `${Math.round(m / 10) * 10}m` : `${(m / 1000).toFixed(1)}km`;
+import { facts, features, fmtDist, MAX_COMPARE, weekdayHours } from "@/lib/facilityFacts";
+
+/** 비교 담기 상태 (지도 홈이 갖고 있고 목록·상세가 같이 쓴다) */
+export interface CompareState {
+  ids: string[];
+  toggle: (id: string) => void;
+}
+
+/** 대시보드 요약 타일: 조건에 맞는 곳·이용 가능·야간/주말·정원 찬 곳 */
+export function SummaryTiles({ matches, full }: { matches: Match[]; full: Match[] }) {
+  const available = matches.filter((m) => availability(m.facility).status === "available").length;
+  const extended = matches.filter((m) => features(m.facility).length > 0).length;
+  const near = matches.filter((m) => m.distanceM !== null && m.distanceM <= 500).length;
+  const tiles = [
+    { label: "조건에 맞는 곳", value: matches.length, tone: "text-stone-900" },
+    { label: "이용 가능 확인", value: available, tone: "text-emerald-700" },
+    { label: "야간·주말 운영", value: extended, tone: "text-violet-700" },
+    full.length > 0 ? { label: "정원 찬 곳", value: full.length, tone: "text-amber-700" } : { label: "500m 안", value: near, tone: "text-sky-700" },
+  ];
+  return (
+    <dl className="grid grid-cols-4 gap-2 border-b border-stone-200 bg-stone-50 px-3 py-3">
+      {tiles.map((t) => (
+        <div key={t.label} className="rounded-xl border border-stone-200 bg-white px-2 py-2 shadow-sm">
+          <dt className="truncate text-[10px] text-stone-500">{t.label}</dt>
+          <dd className={`text-lg font-bold leading-tight ${t.tone}`}>{t.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CompareToggle({ id, compare }: { id: string; compare?: CompareState }) {
+  if (!compare) return null;
+  const on = compare.ids.includes(id);
+  const full = !on && compare.ids.length >= MAX_COMPARE;
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      disabled={full}
+      title={full ? `최대 ${MAX_COMPARE}곳까지 비교할 수 있어요` : undefined}
+      onClick={(e) => {
+        e.stopPropagation();
+        compare.toggle(id);
+      }}
+      className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium disabled:opacity-40 ${
+        on ? "border-emerald-600 bg-emerald-600 text-white" : "border-stone-300 text-stone-600"
+      }`}
+    >
+      {on ? "✓ 비교" : "+ 비교"}
+    </button>
+  );
+}
 
 export function StatusBadge({ facility }: { facility: Facility }) {
   const a = availability(facility);
@@ -28,34 +79,63 @@ export function StatusBadge({ facility }: { facility: Facility }) {
   );
 }
 
-function Row({ m, selected, onSelect, showBadge }: { m: Match; selected: boolean; onSelect: (id: string) => void; showBadge: boolean }) {
+function Row({
+  m,
+  selected,
+  onSelect,
+  showBadge,
+  compare,
+}: {
+  m: Match;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  showBadge: boolean;
+  compare?: CompareState;
+}) {
   const { facility: f, distanceM } = m;
+  const cap = f.capacity !== null && f.enrolled !== null ? `정원 ${f.capacity} · 현원 ${f.enrolled}` : f.capacity !== null ? `정원 ${f.capacity}` : null;
+  const feats = features(f);
   return (
-    <li>
+    <li className="relative px-3 py-1.5">
+      {/* 카드(시설 열기)와 비교 버튼은 형제로 둔다: 버튼을 카드 안에 넣으면 누를 때 카드까지 열린다 */}
       <button
+        type="button"
         onClick={() => onSelect(f.id)}
-        className={`flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-stone-50 ${selected ? "bg-emerald-50" : ""}`}
+        className={`flex w-full items-center gap-3 rounded-xl border bg-white py-2.5 pl-3 text-left shadow-sm transition hover:border-emerald-300 ${
+          compare ? "pr-20" : "pr-3"
+        } ${selected ? "border-emerald-500 ring-1 ring-emerald-500" : "border-stone-200"}`}
       >
         <span
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-sm font-bold text-white"
           style={{ background: KIND_META[f.kind].color }}
+          title={f.vacancy !== null ? `빈자리(추정) ${f.vacancy}명` : KIND_META[f.kind].label}
         >
           {f.vacancy ?? KIND_META[f.kind].short}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-stone-900">{f.name}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-semibold text-stone-900">{f.name}</span>
+            {fmtDist(distanceM) && <span className="shrink-0 text-[11px] text-stone-400">{fmtDist(distanceM)}</span>}
+          </span>
           <span className="block truncate text-xs text-stone-500">
             {KIND_META[f.kind].label}
             {f.kind === "daycare" && f.type ? ` (${f.type})` : ""} · {f.address.replace("서울특별시 ", "")}
           </span>
-          {showBadge && (
-            <span className="mt-0.5 block">
-              <StatusBadge facility={f} />
-            </span>
-          )}
+          <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+            {showBadge && <StatusBadge facility={f} />}
+            {cap && <span className="rounded bg-stone-100 px-1.5 py-0.5 text-stone-600">{cap}</span>}
+            <span className="rounded bg-stone-100 px-1.5 py-0.5 text-stone-600">평일 {weekdayHours(f).replace(" (기본 보육시간)", "")}</span>
+            {feats.map((x) => (
+              <span key={x} className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">
+                {x}
+              </span>
+            ))}
+          </span>
         </span>
-        {fmtDist(distanceM) && <span className="shrink-0 text-xs text-stone-500">{fmtDist(distanceM)}</span>}
       </button>
+      <span className="absolute right-6 top-1/2 -translate-y-1/2">
+        <CompareToggle id={f.id} compare={compare} />
+      </span>
     </li>
   );
 }
@@ -70,6 +150,7 @@ export function ResultList({
   onWiden,
   onAlert,
   showBadge,
+  compare,
 }: {
   matches: Match[];
   /** 정원이 찬 시설 (빈자리 알림 대상). 기능이 꺼져 있으면 빈 배열 */
@@ -83,6 +164,7 @@ export function ResultList({
   /** 조건으로 빈자리 알림 받기. null 이면 숨김 */
   onAlert: (() => void) | null;
   showBadge: boolean;
+  compare?: CompareState;
 }) {
   const [showFull, setShowFull] = useState(false);
 
@@ -114,15 +196,16 @@ export function ResultList({
             🔔 이 조건으로 빈자리 알림 받기
           </button>
         )}
-        {full.length > 0 && <FullList full={full} selectedId={selectedId} onSelect={onSelect} />}
+        {full.length > 0 && <FullList full={full} selectedId={selectedId} onSelect={onSelect} compare={compare} />}
       </div>
     );
   }
   return (
     <>
-      <ul className="divide-y divide-stone-100">
+      <SummaryTiles matches={matches} full={full} />
+      <ul className="py-1.5">
         {matches.map((m) => (
-          <Row key={m.facility.id} m={m} selected={m.facility.id === selectedId} onSelect={onSelect} showBadge={showBadge} />
+          <Row key={m.facility.id} m={m} selected={m.facility.id === selectedId} onSelect={onSelect} showBadge={showBadge} compare={compare} />
         ))}
       </ul>
       {full.length > 0 && (
@@ -130,18 +213,28 @@ export function ResultList({
           <button className="text-xs font-medium text-stone-600" onClick={() => setShowFull((v) => !v)}>
             정원이 찬 곳 {full.length}곳 {showFull ? "접기 ▴" : "보기 ▾"} · 빈자리 알림을 받을 수 있어요
           </button>
-          {showFull && <FullList full={full} selectedId={selectedId} onSelect={onSelect} />}
+          {showFull && <FullList full={full} selectedId={selectedId} onSelect={onSelect} compare={compare} />}
         </div>
       )}
     </>
   );
 }
 
-function FullList({ full, selectedId, onSelect }: { full: Match[]; selectedId: string | null; onSelect: (id: string) => void }) {
+function FullList({
+  full,
+  selectedId,
+  onSelect,
+  compare,
+}: {
+  full: Match[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  compare?: CompareState;
+}) {
   return (
-    <ul className="mt-2 divide-y divide-stone-100 rounded-xl border border-stone-200 bg-white">
+    <ul className="-mx-3 mt-2">
       {full.slice(0, 30).map((m) => (
-        <Row key={m.facility.id} m={m} selected={m.facility.id === selectedId} onSelect={onSelect} showBadge />
+        <Row key={m.facility.id} m={m} selected={m.facility.id === selectedId} onSelect={onSelect} showBadge compare={compare} />
       ))}
     </ul>
   );
@@ -176,13 +269,16 @@ export function FacilityDetail({
   age,
   onClose,
   onAlert,
+  compare,
 }: {
   match: Match;
   age: number | null;
   onClose: () => void;
   /** 이 시설 빈자리 알림 받기. null 이면 숨김 */
   onAlert: (() => void) | null;
+  compare?: CompareState;
 }) {
+  const [more, setMore] = useState(false);
   const { facility: f, hours } = match;
   const meta = KIND_META[f.kind];
   const dial = f.phone.replace(/[^0-9+]/g, "");
@@ -207,9 +303,12 @@ export function FacilityDetail({
             <StatusBadge facility={f} />
           </div>
         </div>
-        <button onClick={onClose} aria-label="닫기" className="-mr-1 rounded-full p-2 text-stone-500 hover:bg-stone-100">
-          ✕
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <CompareToggle id={f.id} compare={compare} />
+          <button onClick={onClose} aria-label="닫기" className="-mr-1 rounded-full p-2 text-stone-500 hover:bg-stone-100">
+            ✕
+          </button>
+        </div>
       </div>
 
       <dl className="grid grid-cols-2 gap-3 rounded-xl bg-stone-50 p-3 text-sm">
@@ -240,6 +339,27 @@ export function FacilityDetail({
           </dd>
         </div>
       </dl>
+
+      {/* 아이사랑 '정보 더보기'처럼 유형·특성·정원/현원·운영시간을 표로 */}
+      <div className="overflow-hidden rounded-xl border border-stone-200">
+        <dl className="divide-y divide-stone-100 text-sm">
+          {facts(match)
+            .filter((x) => more || ["kind", "features", "capacity", "hours", "ages"].includes(x.key))
+            .map((x) => (
+              <div key={x.key} className="grid grid-cols-[6.5rem_1fr] gap-2 px-3 py-2">
+                <dt className="text-xs text-stone-500">{x.label}</dt>
+                <dd className="text-xs font-medium text-stone-800">{x.value}</dd>
+              </div>
+            ))}
+        </dl>
+        <button
+          type="button"
+          onClick={() => setMore((v) => !v)}
+          className="block w-full border-t border-stone-100 bg-stone-50 py-1.5 text-center text-xs font-medium text-stone-600"
+        >
+          {more ? "정보 접기 ▴" : "정보 더보기 ▾"}
+        </button>
+      </div>
 
       {(f.staff != null || f.waitlist) && (
         <p className="text-xs text-stone-600">

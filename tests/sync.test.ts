@@ -66,7 +66,7 @@ describe("시설 수집", () => {
       url.includes("/1/1000/")
         ? new Response(JSON.stringify({ ChildCareInfo: { list_total_count: 1500, row: [{ STCODE: "1" }] } }))
         : new Response("x", { status: 500 })) as unknown as typeof fetch;
-    await expect(fetchAll("k", "ChildCareInfo", false, fake)).rejects.toThrow();
+    await expect(fetchAll("k", "ChildCareInfo", false, fake, [1, 1])).rejects.toThrow();
   });
 
   it("수집 보고는 시설코드 앞 5자리로 구별 건수를 센다", () => {
@@ -80,5 +80,37 @@ describe("시설 수집", () => {
 
   it("geohash", () => {
     expect(encodeGeohash(37.5665, 126.978, 6)).toBe("wydm9q");
+  });
+});
+
+describe("수집 재시도", () => {
+  it("연결이 잠깐 끊겨도(fetch failed) 다시 시도해서 받는다", async () => {
+    let n = 0;
+    const flaky = (async () => {
+      n++;
+      if (n < 3) throw new TypeError("fetch failed");
+      return new Response(JSON.stringify({ ChildCareInfo: { list_total_count: 1, row: [{ STCODE: "1" }] } }));
+    }) as unknown as typeof fetch;
+    expect(await fetchAll("k", "ChildCareInfo", false, flaky, [1, 1])).toHaveLength(1);
+    expect(n).toBe(3);
+  });
+
+  it("키·서비스명 오류는 다시 묻지 않고 바로 실패, 재시도도 다 실패하면 실패", async () => {
+    let n = 0;
+    const bad = (async () => {
+      n++;
+      return new Response(JSON.stringify({ RESULT: { CODE: "INFO-100", MESSAGE: "인증키가 유효하지 않습니다" } }));
+    }) as unknown as typeof fetch;
+    await expect(fetchAll("k", "ChildCareInfo", false, bad, [1, 1])).rejects.toThrow("인증키");
+    expect(n).toBe(1);
+    const down = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    await expect(fetchAll("k", "ChildCareInfo", false, down, [1, 1])).rejects.toThrow("fetch failed");
+  });
+
+  it("오류로 못 받은 회차는 '샘플 데이터'로 표시하지 않는다", async () => {
+    const failing: FacilitySource = { id: "seoul-childcare", kind: "daycare", label: "t", run: async () => ({ facilities: [], parts: [{ key: "seoul", count: 0, error: "fetch failed" }], partial: true }) };
+    expect((await syncFacilities([failing])).sample).toBe(false);
   });
 });

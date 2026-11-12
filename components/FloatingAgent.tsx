@@ -50,7 +50,7 @@ export default function FloatingAgent({ hidden = false }: { hidden?: boolean }) 
   const [open, setOpen] = useState(false);
   const [pip, setPip] = useState<Window | null>(null);
   const [canPip, setCanPip] = useState(false);
-  // 버튼 위치: 오른쪽 아래(하단 탭 위)가 기본. 끌어서 옮기면 이 기기에 기억한다
+  // 버튼 위치: 오른쪽 가장자리 가운데쯤이 기본(목록 카드의 버튼을 가리지 않게). 끌어서 옮기면 이 기기에 기억한다
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
 
@@ -128,7 +128,7 @@ export default function FloatingAgent({ hidden = false }: { hidden?: boolean }) 
         onPointerUp={onPointerUp}
         style={style}
         className={`fixed z-40 flex h-14 w-14 touch-none select-none items-center justify-center rounded-full bg-emerald-600 text-2xl text-white shadow-lg ring-4 ring-white/70 active:scale-95 ${
-          pos ? "" : "bottom-[calc(var(--tabbar-h,64px)+16px)] right-4"
+          pos ? "" : "top-[42vh] right-3"
         } ${pip ? "opacity-60" : ""}`}
       >
         {open ? "✕" : "💬"}

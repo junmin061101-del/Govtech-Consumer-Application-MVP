@@ -13,6 +13,8 @@ export interface SourceRun {
   partial: boolean;
   /** 소스 전체를 빠짐없이 받았으면 true → 이번에 없던 시설은 지운다 (구 단위 정리 대신) */
   complete?: boolean;
+  /** 인증키 없이 샘플 키로 일부만 받은 경우 (화면에 '샘플 데이터' 안내). 오류로 못 받은 것과 구분한다 */
+  sample?: boolean;
 }
 
 export interface FacilitySource {

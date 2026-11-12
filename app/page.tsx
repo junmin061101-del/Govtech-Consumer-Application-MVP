@@ -6,6 +6,8 @@ import { useAuth } from "@/components/AuthProvider";
 import FilterBar, { type QuickPlace } from "@/components/FilterBar";
 import KakaoMap from "@/components/KakaoMap";
 import { FacilityDetail, ResultList } from "@/components/ResultPanel";
+import CompareSheet from "@/components/CompareSheet";
+import { MAX_COMPARE } from "@/lib/facilityFacts";
 import { useRegions } from "@/components/RegionPicker";
 import { useCurrentLocation, type Here } from "@/components/useCurrentLocation";
 import { findCombos } from "@/lib/combos";
@@ -155,8 +157,26 @@ function MapApp({ profile, regions, flags }: { profile: ProfileView | null; regi
     }
     return [...seen.values()];
   }, [matches, combos]);
+  // 비교 담기 (최대 3곳). 담은 시점의 정보를 들고 있어 지도를 옮겨도 남는다
+  const [compareItems, setCompareItems] = useState<Match[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
   const selected =
-    pins.find((m) => m.facility.id === selectedId) ?? full.find((m) => m.facility.id === selectedId) ?? null;
+    pins.find((m) => m.facility.id === selectedId) ??
+    full.find((m) => m.facility.id === selectedId) ??
+    compareItems.find((m) => m.facility.id === selectedId) ??
+    null;
+  const compare = useMemo(
+    () => ({
+      ids: compareItems.map((m) => m.facility.id),
+      toggle: (id: string) =>
+        setCompareItems((cur) => {
+          if (cur.some((m) => m.facility.id === id)) return cur.filter((m) => m.facility.id !== id);
+          const m = pins.find((x) => x.facility.id === id) ?? full.find((x) => x.facility.id === id);
+          return m && cur.length < MAX_COMPARE ? [...cur, m] : cur;
+        }),
+    }),
+    [compareItems, pins, full],
+  );
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(filters), [draft, filters]);
 
@@ -342,6 +362,7 @@ function MapApp({ profile, regions, flags }: { profile: ProfileView | null; regi
                 ? () => setAlertDraft({ type: "facility", facilityId: selected.facility.id, facilityName: selected.facility.name })
                 : null
             }
+            compare={compare}
           />
         ) : (
           <ResultList
@@ -354,9 +375,39 @@ function MapApp({ profile, regions, flags }: { profile: ProfileView | null; regi
             onWiden={onWiden}
             onAlert={conditionAlert}
             showBadge={flags.matching}
+            compare={compare}
           />
         )}
+        {compareItems.length > 0 && (
+          <div className="sticky bottom-0 z-10 flex items-center gap-2 border-t border-stone-200 bg-white/95 px-3 py-2 backdrop-blur">
+            <p className="min-w-0 flex-1 truncate text-xs text-stone-600">
+              비교 {compareItems.length}/{MAX_COMPARE} · {compareItems.map((m) => m.facility.name).join(", ")}
+            </p>
+            <button onClick={() => setCompareItems([])} className="shrink-0 text-xs text-stone-400 underline">
+              비우기
+            </button>
+            <button
+              onClick={() => setCompareOpen(true)}
+              disabled={compareItems.length < 2}
+              className="shrink-0 rounded-full bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {compareItems.length < 2 ? "1곳 더 담기" : "비교하기"}
+            </button>
+          </div>
+        )}
       </section>
+
+      {compareOpen && compareItems.length > 0 && (
+        <CompareSheet
+          items={compareItems}
+          onRemove={(id) => setCompareItems((cur) => cur.filter((m) => m.facility.id !== id))}
+          onOpen={(id) => {
+            setSelectedId(id);
+            setCompareOpen(false);
+          }}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
 
       {alertDraft && <AlertSheet draft={alertDraft} onClose={() => setAlertDraft(null)} />}
     </main>

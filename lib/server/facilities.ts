@@ -46,7 +46,7 @@ export async function syncFacilities(sources: FacilitySource[] = SOURCES, now = 
 
   for (const src of sources) {
     const run = await src.run();
-    report.sample ||= run.partial && src.id === "seoul-childcare";
+    report.sample ||= run.sample === true;
     const located = run.facilities.flatMap((f) => locate(f, startedAt) ?? []);
 
     const prev = new Map((await s.list<StoredFacility>(FACILITIES, [["source", "==", src.id]])).map((d) => [d.id, d]));

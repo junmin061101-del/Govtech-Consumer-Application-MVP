@@ -10,6 +10,7 @@ import * as config from "@/server/api/config/route";
 import * as cronDaily from "@/server/api/cron/daily/route";
 import * as events from "@/server/api/events/route";
 import * as facilities from "@/server/api/facilities/route";
+import * as mailNaver from "@/server/api/mail/naver/route";
 import * as me from "@/server/api/me/route";
 import * as notificationById from "@/server/api/notifications/[id]/route";
 import * as notifications from "@/server/api/notifications/route";
@@ -35,6 +36,7 @@ export const ROUTES: [pattern: string, mod: RouteModule][] = [
   ["/api/cron/daily", cronDaily as RouteModule],
   ["/api/events", events],
   ["/api/facilities", facilities],
+  ["/api/mail/naver", mailNaver],
   ["/api/me", me],
   ["/api/notifications/:id", notificationById as RouteModule],
   ["/api/notifications", notifications],

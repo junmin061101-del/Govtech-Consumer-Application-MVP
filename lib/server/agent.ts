@@ -39,6 +39,7 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
 - search_knowledge: 신청 방법·우선순위·필요 서류·신청 창구·구별 안내·CareOS 표시 기준을 큐레이션 문서에서 찾는다 (출처·기준일·경과일 포함).
 - list_my_alerts / create_vacancy_alert: 빈자리 알림 확인·등록.
 - get_review_links: 시설의 외부 후기·평판 원문 링크(네이버 블로그 후기·네이버 지도·카카오맵 검색 결과).
+- draft_email: 아이가 다니는(또는 다닐) 시설에 보낼 메일 초안. 앱이 편집 가능한 메일 카드로 보여 주고, 부모가 고친 뒤 직접 보낸다.
 
 최신 기준으로 답하기 (중요):
 - 오늘 날짜는 메시지 앞 대괄호 줄의 날짜다. '올해·지금·현재' 는 그 날짜 기준이다. 연도를 말할 때 학습 시점(예: 2024~2025년)을 기준으로 삼지 않는다.
@@ -57,6 +58,10 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
   답에 다시 적지 않는다. "아래 버튼으로 네이버 블로그 글·지도 리뷰를 볼 수 있어요" 정도로 한두 줄만 쓴다. 블로그 글 내용은 앱이 화면에만 보여 주고
   너에게는 주지 않는다(네이버 약관). 너는 후기 내용을 읽을 수
   없으므로 후기를 요약하거나 평가(좋다·나쁘다·평점)를 지어내지 않는다. "블로그 후기는 개인 의견이고 협찬 글이 있을 수 있어요"라고 덧붙인다.
+- 시설에 메일을 쓰고 싶다고 하면 draft_email 을 부른다. 결석·조퇴·상담 요청·문의 등 목적에 맞게 정중한 한국어로 짧게 쓴다.
+  아이 이름·보호자 이름·연락처·반 이름은 묻지도 쓰지도 말고 [아이 이름] [보호자 이름] [연락처] [반 이름] 빈칸으로 남긴다
+  (부모가 카드에서 직접 채운다). 날짜·사유처럼 부모가 말한 내용만 넣고, 모르는 내용은 지어내지 않는다.
+  메일은 부모가 카드에서 '보내기'를 눌러야 나간다. 네가 보냈다고 말하지 말고 "아래 카드에서 확인·수정 후 보내 주세요"라고 안내한다.
 - 결과가 없으면 범위를 넓히거나(도보 시간, 시간대, 시설 종류) 빈자리 알림을 제안한다.
 - 답은 한국어로, 모바일 화면에 맞게 짧게 쓴다. 시설은 이름·종류·거리·상태·운영 정보 위주로 3~5곳까지만 추린다.`;
 
@@ -128,6 +133,21 @@ export const TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "draft_email",
+    description:
+      "시설(어린이집 등)에 보낼 메일 초안을 만든다. 앱이 편집 카드로 보여 주고 부모가 직접 보낸다. 개인정보는 [아이 이름] 등 빈칸으로 둔다.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        facility_name: { type: "string", description: "받는 시설 이름 (예: 구립상도어린이집)" },
+        subject: { type: "string", description: "메일 제목 (60자 이내)" },
+        body: { type: "string", description: "메일 본문. 인사·용건·마무리. 개인정보는 [아이 이름] [보호자 이름] [연락처] [반 이름] 빈칸" },
+      },
+      required: ["facility_name", "subject", "body"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "list_my_alerts",
     description: "회원이 받고 있는 빈자리 알림 목록 (최대 3개).",
     parametersJsonSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -163,6 +183,7 @@ export const TOOL_LABELS: Record<string, string> = {
   search_knowledge: "안내 문서 검색",
   list_my_alerts: "알림 확인",
   get_review_links: "후기 링크 찾기",
+  draft_email: "메일 초안 쓰기",
   create_vacancy_alert: "빈자리 알림 등록",
 };
 
@@ -304,6 +325,12 @@ export async function runTool(uid: string, name: string, input: ToolInput): Prom
         results: hits,
         note: hits.length ? "결과에 있는 내용만 안내하고, 출처·기준일을 함께 적어요" : "안내 문서에 관련 내용이 없어요. 공식 창구로 안내해 주세요",
       };
+    }
+
+    case "draft_email": {
+      const facility = String(input.facility_name ?? "").trim().slice(0, 60);
+      if (!facility || !String(input.subject ?? "").trim() || !String(input.body ?? "").trim()) return { error: "facility_name·subject·body 가 필요해요" };
+      return { shown: true, facility, note: "앱이 초안을 편집 카드로 보여 줬다. 부모가 받는 주소·빈칸을 채우고 직접 보낸다. 보냈다고 말하지 말 것." };
     }
 
     case "get_review_links": {

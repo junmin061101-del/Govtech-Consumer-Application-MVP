@@ -71,6 +71,14 @@ export default function Privacy() {
           </li>
           <li>카카오: 지도·장소 검색 (회원 정보는 보내지 않음)</li>
           <li>
+            Google(Gmail): AI 상담의 메일 카드에서 &lsquo;Gmail&rsquo;로 보낼 때, 회원의 브라우저가 Google 로그인 창에서 받은 &lsquo;메일 보내기&rsquo;
+            권한으로 Gmail 에 직접 보냅니다. CareOS 서버를 거치지 않고, 권한은 보낸 뒤 바로 해제하며 받은편지함은 읽지 않습니다.
+          </li>
+          <li>
+            네이버(메일): &lsquo;네이버 메일&rsquo;로 보낼 때 네이버 아이디·애플리케이션 비밀번호와 메일 내용을 CareOS 서버가 받아 네이버 메일
+            서버(SMTP)로 한 번 보냅니다. 비밀번호와 메일 내용은 저장하지 않습니다.
+          </li>
+          <li>
             네이버 클라우드 플랫폼(NAVER API HUB 블로그 검색): &lsquo;네이버 블로그 글 바로 보기&rsquo;를 누를 때 시설 이름만 보냅니다 (회원
             정보는 보내지 않음). 검색 결과는 저장하지 않고 AI 상담에도 넣지 않습니다.
           </li>

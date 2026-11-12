@@ -6,6 +6,7 @@ import { useCurrentLocation, type Here } from "@/components/useCurrentLocation";
 import { api } from "@/lib/ui";
 import { reviewLinks } from "@/lib/reviewLinks";
 import BlogPosts from "@/components/BlogPosts";
+import EmailCompose from "@/components/EmailCompose";
 import { useSpeechInput } from "@/components/useSpeechInput";
 import type { ReactNode } from "react";
 
@@ -15,7 +16,7 @@ const STORE_KEY = "careos:agent:v2";
 const MAX_STEPS = 8;
 
 // Gemini 대화 형식 (role: user | model, parts)
-type Part = { text?: string; functionCall?: { name?: string }; functionResponse?: unknown; [k: string]: unknown };
+type Part = { text?: string; functionCall?: { name?: string; args?: Record<string, unknown> }; functionResponse?: unknown; [k: string]: unknown };
 type Msg = { role: "user" | "model"; parts: Part[] };
 
 const SUGGESTIONS = [
@@ -46,6 +47,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_knowledge: "안내 문서 검색",
   list_my_alerts: "알림 확인",
   get_review_links: "후기 링크 찾기",
+  draft_email: "메일 초안 쓰기",
   create_vacancy_alert: "빈자리 알림 등록",
 };
 
@@ -203,7 +205,14 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   };
 
   // 화면에 보이는 것: 사용자 질문, AI 의 글, 도구 사용 표시. 도구 결과·사고 내용은 숨긴다
-  type View = { key: string; kind: "user" | "assistant" | "tool" | "links"; text: string; links?: ReviewLinkView[]; address?: string };
+  type View = {
+    key: string;
+    kind: "user" | "assistant" | "tool" | "links" | "email";
+    text: string;
+    links?: ReviewLinkView[];
+    address?: string;
+    email?: { subject: string; body: string };
+  };
   const view = messages.flatMap((m, i): View[] => {
     if (m.role === "user") {
       // 후기 링크 도구의 결과는 버튼으로 바로 보여 준다 (AI 가 주소를 다시 쓰지 않게)
@@ -220,9 +229,18 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
         ? []
         : p.text?.trim()
           ? [{ key: `a${i}-${j}`, kind: "assistant", text: p.text }]
-          : p.functionCall?.name
-            ? [{ key: `t${i}-${j}`, kind: "tool", text: TOOL_LABELS[p.functionCall.name] ?? p.functionCall.name }]
-            : [],
+          : p.functionCall?.name === "draft_email"
+            ? [
+                {
+                  key: `e${i}-${j}`,
+                  kind: "email",
+                  text: String(p.functionCall.args?.facility_name ?? "").slice(0, 60),
+                  email: { subject: String(p.functionCall.args?.subject ?? "").slice(0, 200), body: String(p.functionCall.args?.body ?? "").slice(0, 5000) },
+                },
+              ]
+            : p.functionCall?.name
+              ? [{ key: `t${i}-${j}`, kind: "tool", text: TOOL_LABELS[p.functionCall.name] ?? p.functionCall.name }]
+              : [],
     );
   });
 
@@ -270,7 +288,9 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
           )}
 
           {view.map((v) =>
-            v.kind === "links" ? (
+            v.kind === "email" ? (
+              <EmailCompose key={v.key} facility={v.text} subject={v.email!.subject} body={v.email!.body} />
+            ) : v.kind === "links" ? (
               <div key={v.key} className="max-w-[92%] space-y-1.5 rounded-2xl border border-stone-200 bg-white px-3.5 py-2.5">
                 <p className="text-xs font-semibold text-stone-700">{v.text} 후기·평판</p>
                 <div className="flex flex-wrap gap-1.5">

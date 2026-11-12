@@ -150,6 +150,7 @@ export const TOPICS = {
   cost: "비용·지원",
   alert: "빈자리 알림",
   reviews: "후기·평판",
+  email: "시설 연락·메일",
   other: "기타",
 } as const;
 export type Topic = keyof typeof TOPICS;
@@ -166,6 +167,7 @@ export function topicsOf(turn: Pick<Turn, "question" | "tools">): Topic[] {
   if (/비용|요금|보육료|지원금|수당|무상|돈/.test(q)) out.add("cost");
   if (turn.tools.includes("create_vacancy_alert") || /알림/.test(q)) out.add("alert");
   if (turn.tools.includes("get_review_links") || /후기|리뷰|평판|평가|분위기/.test(q)) out.add("reviews");
+  if (turn.tools.includes("draft_email") || /메일|이메일|연락|결석|조퇴/.test(q)) out.add("email");
   if (out.size === 0) out.add("other");
   return [...out];
 }

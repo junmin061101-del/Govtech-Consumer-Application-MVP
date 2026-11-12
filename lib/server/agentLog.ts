@@ -78,7 +78,9 @@ interface Turn {
   staleDocs: boolean;
 }
 
-const textOf = (parts: Part[] = []) => parts.map((p) => (p.thought ? "" : (p.text ?? ""))).join("").trim();
+// 확장 프로그램이 붙인 '[아이사랑 화면 정보]'(부모가 보던 화면 요약)는 부모의 질문이 아니므로 기록에서 뺀다
+const textOf = (parts: Part[] = []) =>
+  parts.map((p) => (p.thought || /^\[아이사랑 화면 정보\]/.test(p.text ?? "") ? "" : (p.text ?? ""))).join("").trim();
 
 /** 마지막 사용자 질문부터 이번 답까지를 한 건으로 묶는다 */
 export function extractTurn(history: Content[]): Turn | null {

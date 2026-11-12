@@ -38,3 +38,19 @@ describe("화면 캡처 보내기", () => {
     expect(validateHistory([user({ text: "큰 캡처" }, img("A".repeat(600_000)))])).toHaveLength(1);
   });
 });
+
+describe("확장 프로그램 연동", () => {
+  it("AI 도구 point_on_isarang: 표시 요청만 하고 누르지 않는다", async () => {
+    expect(await runTool("u1", "point_on_isarang", { text: "등록대기신청", note: "여기를 눌러 주세요" })).toMatchObject({ requested: true, text: "등록대기신청" });
+    expect(await runTool("u1", "point_on_isarang", {})).toHaveProperty("error");
+  });
+
+  it("아이사랑 화면 요약은 대시보드 기록의 질문에 들어가지 않는다", async () => {
+    const { extractTurn } = await import("@/lib/server/agentLog");
+    const t = extractTurn([
+      { role: "user", parts: [{ text: "[오늘 2026-11-12(목) · 현재 위치: 사용 안 함]\n다음에 뭐 눌러?" }, { text: "[아이사랑 화면 정보] 로그인\n누를 수 있는 것: 로그인 | 회원가입" }] },
+      { role: "model", parts: [{ text: "'로그인'을 눌러 주세요" }] },
+    ])!;
+    expect(t.question).toBe("다음에 뭐 눌러?");
+  });
+});

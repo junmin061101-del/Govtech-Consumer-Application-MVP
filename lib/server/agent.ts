@@ -46,6 +46,8 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
 - get_review_links: 시설의 외부 후기·평판 원문 링크(네이버 블로그 후기·네이버 지도·카카오맵 검색 결과).
 - isarang_guide: 아이사랑(임신육아종합포털)에서 등록대기 신청·신청현황 확인·아동등록 같은 일을 부모가 직접 할 때, 해당 메뉴로 바로 가는
   버튼과 단계 체크리스트 카드를 보여 준다. 부모는 아이사랑을 열어 두고 이 상담 창(작게 띄우기)을 옆에 둔 채 진행한다.
+- point_on_isarang: (부모가 'CareOS 신청 도우미' 확장 프로그램을 쓰는 경우) 아이사랑 화면에서 다음에 누를 버튼·링크에 테두리를 표시한다.
+  표시만 하고 누르지는 않는다.
 - draft_email: 아이가 다니는(또는 다닐) 시설에 보낼 메일 초안. 앱이 편집 가능한 메일 카드로 보여 주고, 부모가 고친 뒤 직접 보낸다.
 
 최신 기준으로 답하기 (중요):
@@ -70,6 +72,10 @@ export const SYSTEM = `너는 CareOS 돌봄지도의 AI 상담사다. 만 0~8세
 - 부모가 화면 캡처(이미지)를 보내면 그 화면에 실제로 보이는 메뉴·버튼·문구만 근거로 다음에 누를 곳을 한두 단계씩 알려 준다.
   화면에 없는 메뉴를 지어내지 않는다. 캡처에 보이는 아이 이름·주민등록번호·주소·연락처는 답에 옮겨 적지 않는다.
   오류 문구가 보이면 그대로 짧게 인용하고 해결 방법을 안내하되, 모르면 아이사랑 헬프데스크(1566-3232)로 안내한다.
+- 메시지에 '[아이사랑 화면 정보]'로 시작하는 글은 확장 프로그램이 부모가 보는 아이사랑 화면을 요약한 것이다(부모가 쓴 글이 아니다).
+  '누를 수 있는 것' 목록에 실제로 있는 글자만 근거로 다음 단계를 안내하고, 그때 point_on_isarang 의 text 에 그 글자를 그대로 넣어
+  표시한다(한 번에 하나). 목록에 없는 버튼은 지어내지 말고 화면 캡처를 다시 보내 달라고 한다. 최종 '신청' 버튼도 표시만 하고,
+  누르기 전에 내용을 꼭 확인하라고 말한다.
 - 시설에 메일을 쓰고 싶다고 하면 draft_email 을 부른다. 결석·조퇴·상담 요청·문의 등 목적에 맞게 정중한 한국어로 짧게 쓴다.
   아이 이름·보호자 이름·연락처·반 이름은 묻지도 쓰지도 말고 [아이 이름] [보호자 이름] [연락처] [반 이름] 빈칸으로 남긴다
   (부모가 카드에서 직접 채운다). 날짜·사유처럼 부모가 말한 내용만 넣고, 모르는 내용은 지어내지 않는다.
@@ -159,6 +165,19 @@ export const TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "point_on_isarang",
+    description: "아이사랑 화면의 버튼·링크 하나에 테두리와 말풍선을 표시한다(누르지 않음). text 는 '[아이사랑 화면 정보]'의 '누를 수 있는 것'에 있는 글자 그대로.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "표시할 버튼·링크의 글자 (예: 로그인, 등록대기신청)" },
+        note: { type: "string", description: "말풍선에 쓸 짧은 안내 (예: 여기를 눌러 로그인해 주세요)" },
+      },
+      required: ["text"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "draft_email",
     description:
       "시설(어린이집 등)에 보낼 메일 초안을 만든다. 앱이 편집 카드로 보여 주고 부모가 직접 보낸다. 개인정보는 [아이 이름] 등 빈칸으로 둔다.",
@@ -211,6 +230,7 @@ export const TOOL_LABELS: Record<string, string> = {
   get_review_links: "후기 링크 찾기",
   draft_email: "메일 초안 쓰기",
   isarang_guide: "아이사랑 안내 준비",
+  point_on_isarang: "아이사랑 화면에 표시",
   create_vacancy_alert: "빈자리 알림 등록",
 };
 
@@ -358,6 +378,12 @@ export async function runTool(uid: string, name: string, input: ToolInput): Prom
       const g = isarangGuide(String(input.task ?? ""), String(input.facility_name ?? "").trim().slice(0, 60) || null);
       if (!g) return { error: "task 는 apply·status·register_child·login 중 하나예요" };
       return { ...g, note: "앱이 바로가기 버튼과 체크리스트 카드를 보여 줬다. 링크를 다시 적지 말고, 막히면 화면 캡처(📷)를 보내 달라고 안내한다." };
+    }
+
+    case "point_on_isarang": {
+      const text = String(input.text ?? "").trim().slice(0, 60);
+      if (!text) return { error: "text 가 필요해요" };
+      return { requested: true, text, note: "앱이 확장 프로그램에 표시를 요청했다(설치돼 있을 때만 보인다). 부모가 직접 누른다." };
     }
 
     case "draft_email": {

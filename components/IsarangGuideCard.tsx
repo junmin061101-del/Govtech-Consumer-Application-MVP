@@ -61,6 +61,9 @@ export default function IsarangGuideCard({ task, facility, onCapture }: { task: 
         <button type="button" onClick={onCapture} className="rounded-full border border-stone-300 px-3 py-1 text-xs text-stone-700">
           📷 막히면 화면 보내기
         </button>
+        <a href="/extension" target="_blank" rel="noopener" className="rounded-full border border-stone-300 px-3 py-1 text-xs text-stone-700">
+          🧩 PC 신청 도우미
+        </a>
       </div>
       <p className="text-[11px] leading-snug text-stone-400">
         로그인·간편인증·신청은 아이사랑에서 직접 해 주세요. CareOS 는 아이디·비밀번호를 받지 않아요. 메뉴 이름은 아이사랑 사정에 따라 바뀔

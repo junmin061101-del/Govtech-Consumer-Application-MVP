@@ -12,3 +12,4 @@ firebase-debug.log
 out
 functions/.secret.local
 functions/.env.local
+public/extension/

@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "CareOS 신청 도우미",
+  "version": "0.1.0",
+  "description": "아이사랑 화면을 CareOS AI 상담에 보내고, AI 가 알려 준 다음 버튼을 아이사랑 화면에 표시해요. 로그인·신청은 직접 해요.",
+  "icons": { "128": "icons/icon-128.png" },
+  "action": { "default_title": "지금 아이사랑 화면을 CareOS 에 보내기", "default_icon": { "128": "icons/icon-128.png" } },
+  "permissions": ["activeTab"],
+  "host_permissions": ["https://www.childcare.go.kr/*", "https://careos-dev-1103174.web.app/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://www.childcare.go.kr/*"], "js": ["isarang.js"], "run_at": "document_idle" },
+    { "matches": ["https://careos-dev-1103174.web.app/*", "http://localhost:3000/*"], "js": ["careos.js"], "run_at": "document_start" }
+  ]
+}

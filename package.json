@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "NEXT_PUBLIC_USE_EMULATORS=true next dev",
+    "build:extension": "node scripts/zip-extension.mjs",
+    "prebuild": "npm run build:extension",
     "build": "next build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p functions/tsconfig.json",

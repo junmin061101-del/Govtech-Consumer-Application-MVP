@@ -8,7 +8,7 @@ import { reviewLinks } from "@/lib/reviewLinks";
 import BlogPosts from "@/components/BlogPosts";
 import EmailCompose from "@/components/EmailCompose";
 import IsarangGuideCard from "@/components/IsarangGuideCard";
-import { canCaptureScreen, shotFromFile, shotFromScreen, type Shot } from "@/lib/capture";
+import { canCaptureScreen, shotFromDataUrl, shotFromFile, shotFromScreen, type Shot } from "@/lib/capture";
 import { useSpeechInput } from "@/components/useSpeechInput";
 import type { ReactNode } from "react";
 
@@ -80,6 +80,12 @@ function load(): Msg[] {
     return [];
   }
 }
+/** 확장 프로그램이 보낸 아이사랑 화면은 열려 있는 상담 화면 중 하나만 받는다 (작은 창 > 시트 > 탭) */
+const PRIORITY: Record<string, number> = { pip: 3, sheet: 2, page: 1 };
+const mounted = new Map<string, number>();
+const isTop = (id: string) => [...mounted.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] === id;
+export const PAGE_INFO_RE = /^\[아이사랑 화면 정보\]/;
+
 /** 같은 대화를 쓰는 다른 화면(AI 상담 탭·떠 있는 창·작은 창)에 바뀐 것을 알린다 */
 const SYNC_EVENT = "careos-agent-sync";
 
@@ -146,7 +152,10 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [shot, setShot] = useState<Shot | null>(null);
+  const [pageInfo, setPageInfo] = useState<string | null>(null);
   const [camMenu, setCamMenu] = useState(false);
+  const [extInstalled, setExtInstalled] = useState(false);
+  useEffect(() => setExtInstalled(Boolean(document.documentElement.dataset.careosExt)), []);
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -158,10 +167,32 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
     else await enable();
   };
 
+  // 'CareOS 신청 도우미' 확장 프로그램이 보낸 아이사랑 화면(요약 + 캡처)을 첨부한다. 보내기는 부모가 누른다
+  useEffect(() => {
+    mounted.set(id, PRIORITY[variant] ?? 0);
+    const onMsg = async (e: MessageEvent) => {
+      const d = e.data;
+      if (e.source !== window || e.origin !== window.location.origin || d?.source !== "careos-ext" || d.type !== "isarang-screen") return;
+      if (!isTop(id)) return;
+      setPageInfo(String(d.summary ?? "").slice(0, 4000) || null);
+      if (typeof d.image === "string") setShot(await shotFromDataUrl(d.image).catch(() => null));
+    };
+    window.addEventListener("message", onMsg);
+    return () => {
+      mounted.delete(id);
+      window.removeEventListener("message", onMsg);
+    };
+  }, [id, variant]);
+
   useEffect(() => {
     setMessages(load());
     const onSync = (e: Event) => {
-      if ((e as CustomEvent).detail !== id) setMessages(load());
+      if ((e as CustomEvent).detail !== id) {
+        setMessages(load());
+        // 다른 화면에서 보냈으면 이 화면의 첨부는 비운다
+        setShot(null);
+        setPageInfo(null);
+      }
     };
     window.addEventListener(SYNC_EVENT, onSync);
     return () => window.removeEventListener(SYNC_EVENT, onSync);
@@ -199,13 +230,15 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   const startCapture = () => (canCaptureScreen() ? void capture("screen") : fileRef.current?.click());
 
   const send = async (text: string) => {
-    const q = text.trim() || (shot ? "이 화면에서 다음에 뭘 하면 돼?" : "");
+    const q = text.trim() || (shot || pageInfo ? "이 화면에서 다음에 뭘 하면 돼?" : "");
     if (!q || busy) return;
     setError(null);
     setInput("");
     const parts: Part[] = [{ text: `${contextLine(here)}\n${q}` }];
+    if (pageInfo) parts.push({ text: pageInfo });
     if (shot) parts.push({ inlineData: { mimeType: shot.mimeType, data: shot.data } });
     setShot(null);
+    setPageInfo(null);
     let history: Msg[] = [...messages, { role: "user", parts }];
     setMessages(history);
     save(history, id);
@@ -219,6 +252,14 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
         history = [...history, ...r.append];
         setMessages(history);
         save(history, id);
+        // AI 가 아이사랑 버튼 표시를 요청하면 확장 프로그램에 전한다 (표시만, 누르지 않음)
+        for (const m of r.append) {
+          for (const p of m.parts) {
+            if (p.functionCall?.name === "point_on_isarang") {
+              window.postMessage({ source: "careos-app", type: "highlight", text: p.functionCall.args?.text, note: p.functionCall.args?.note }, window.location.origin);
+            }
+          }
+        }
         if (r.done) break;
         setBusy(`${r.toolLabels.join(", ")} 중…`);
       }
@@ -241,7 +282,8 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
   // 화면에 보이는 것: 사용자 질문, AI 의 글, 도구 사용 표시. 도구 결과·사고 내용은 숨긴다
   type View = {
     key: string;
-    kind: "user" | "assistant" | "tool" | "links" | "email" | "isarang";
+    kind: "user" | "assistant" | "tool" | "links" | "email" | "isarang" | "point";
+    pageInfo?: boolean;
     text: string;
     image?: string;
     task?: string;
@@ -257,16 +299,26 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
         return links ? [{ key: `l${i}-${j}`, kind: "links", text: links.facility, links: links.links, address: links.address }] : [];
       });
       if (linkViews.length) return linkViews;
-      const text = m.parts.map((p) => p.text ?? "").join("").replace(CONTEXT_RE, "").trim();
+      const info = m.parts.some((p) => p.text && PAGE_INFO_RE.test(p.text));
+      const text = m.parts
+        .filter((p) => !(p.text && PAGE_INFO_RE.test(p.text)))
+        .map((p) => p.text ?? "")
+        .join("")
+        .replace(CONTEXT_RE, "")
+        .trim();
       const img = m.parts.find((p) => p.inlineData)?.inlineData;
-      return text || img ? [{ key: `u${i}`, kind: "user", text, image: img ? `data:${img.mimeType};base64,${img.data}` : undefined }] : [];
+      return text || img || info
+        ? [{ key: `u${i}`, kind: "user", text, image: img ? `data:${img.mimeType};base64,${img.data}` : undefined, pageInfo: info }]
+        : [];
     }
     return m.parts.flatMap((p, j): View[] =>
       p.thought
         ? []
         : p.text?.trim()
           ? [{ key: `a${i}-${j}`, kind: "assistant", text: p.text }]
-          : p.functionCall?.name === "isarang_guide"
+          : p.functionCall?.name === "point_on_isarang"
+            ? [{ key: `p${i}-${j}`, kind: "point", text: String(p.functionCall.args?.text ?? "").slice(0, 60) }]
+            : p.functionCall?.name === "isarang_guide"
             ? [
                 {
                   key: `g${i}-${j}`,
@@ -334,7 +386,12 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
           )}
 
           {view.map((v) =>
-            v.kind === "isarang" ? (
+            v.kind === "point" ? (
+              <p key={v.key} className="text-xs text-emerald-700">
+                👉 아이사랑 화면에 &lsquo;{v.text}&rsquo; 표시
+                {!extInstalled && <span className="text-stone-400"> (PC 확장 프로그램을 설치하면 화면에 테두리로 보여요)</span>}
+              </p>
+            ) : v.kind === "isarang" ? (
               <IsarangGuideCard key={v.key} task={v.task!} facility={v.text || null} onCapture={startCapture} />
             ) : v.kind === "email" ? (
               <EmailCompose key={v.key} facility={v.text} subject={v.email!.subject} body={v.email!.body} />
@@ -363,6 +420,7 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={v.image} alt="보낸 화면 캡처" className="max-h-48 max-w-[70%] rounded-xl border border-stone-200 object-contain" />
                 )}
+                {v.pageInfo && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-800">📄 아이사랑 화면 정보 첨부</span>}
                 {v.text && (
                   <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-emerald-600 px-3.5 py-2.5 text-sm text-white">{v.text}</p>
                 )}
@@ -385,6 +443,14 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
       </div>
 
       <div className="border-t border-stone-200 bg-white">
+        {pageInfo && !shot && (
+          <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 pt-3 text-[11px] text-emerald-800">
+            📄 아이사랑 화면 정보가 첨부됐어요. 궁금한 걸 적거나 그대로 &lsquo;보내기&rsquo;를 눌러 주세요.
+            <button type="button" onClick={() => setPageInfo(null)} className="text-stone-500 underline">
+              빼기
+            </button>
+          </div>
+        )}
         {shot && (
           <div className="mx-auto flex max-w-2xl items-start gap-2 px-4 pt-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -393,7 +459,14 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
               주민등록번호·아이 이름 같은 개인정보가 보이면 &lsquo;빼기&rsquo; 후 그 부분을 가려서 다시 찍어 주세요. 이 이미지는 답을 만들 때
               Google Gemini 로 보내고 서버에 저장하지 않아요.
             </p>
-            <button type="button" onClick={() => setShot(null)} className="shrink-0 text-xs text-stone-500 underline">
+            <button
+              type="button"
+              onClick={() => {
+                setShot(null);
+                setPageInfo(null);
+              }}
+              className="shrink-0 text-xs text-stone-500 underline"
+            >
               빼기
             </button>
           </div>
@@ -475,7 +548,7 @@ export default function AgentChat({ variant = "page", actions }: { variant?: Age
             onChange={(e) => setInput(e.target.value)}
             disabled={Boolean(busy)}
           />
-          <button className="shrink-0 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-50" disabled={Boolean(busy) || (!input.trim() && !shot)}>
+          <button className="shrink-0 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-50" disabled={Boolean(busy) || (!input.trim() && !shot && !pageInfo)}>
             보내기
           </button>
         </form>

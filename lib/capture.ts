@@ -55,3 +55,12 @@ export async function shotFromScreen(): Promise<Shot> {
     stream.getTracks().forEach((t) => t.stop());
   }
 }
+
+/** 확장 프로그램이 찍어 보낸 data URL(JPEG) → 크기 제한에 맞춘 Shot */
+export async function shotFromDataUrl(url: string): Promise<Shot> {
+  if (!/^data:image\/(jpeg|png|webp);base64,/.test(url)) throw new Error("이미지 형식이 올바르지 않아요");
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  return fromCanvas(draw(img, img.naturalWidth, img.naturalHeight));
+}
